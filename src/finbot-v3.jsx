@@ -16,6 +16,7 @@
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useGameEngine } from "./hooks/useGameEngine.js";
+import { sfx } from "./engine/sounds.js";
 import {
   DIFFICULTIES, MARKET_CONDITIONS, COGNITIVE_BIASES, QUALITY_META,
   BIAS_EXPLANATIONS, RIPPLE_TRIGGERS, MARKET_SHIFT_META,
@@ -111,6 +112,7 @@ export default function FINBOT9000() {
     hoverConfidence, setHoverConfidence,
     calibrationLog,
     narrationOn, setNarrationOn,
+    soundOn, setSoundOn,
     replayData, setReplayData,
     analyzerError, setAnalyzerError,
     roundLogOpen, setRoundLogOpen,
@@ -475,6 +477,9 @@ export default function FINBOT9000() {
             <button onClick={() => setShowBias(!showBias)} style={{ background: "none", border: "1px solid #222", color: showBias ? "#ffaa00" : "#555", padding: "2px 8px", cursor: "pointer", fontFamily: "monospace", fontSize: 10 }}>
               BIAS [{biasHistory.length}]
             </button>
+            <button onClick={() => setSoundOn(s => !s)} style={{ background: "none", border: "none", color: soundOn ? "#00aaff" : "#333", cursor: "pointer", fontFamily: "monospace", fontSize: 10, padding: "0 4px", letterSpacing: 1 }} title={soundOn ? "Sound ON" : "Sound OFF"}>
+              {soundOn ? "♪" : "♪̶"}
+            </button>
           </div>
         </div>
 
@@ -583,6 +588,7 @@ export default function FINBOT9000() {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.2, delay: idx * 0.07 }}
                     whileHover={!chosen ? { scale: 1.02, transition: { duration: 0.1 } } : {}}
+                    onMouseEnter={() => { if (!chosen) sfx.tick(); }}
                     onClick={() => pick(c)} style={css.card(sel, rev, qc)}>
                     <div style={{ fontSize: 9, color: "#444", marginBottom: 6, letterSpacing: 2 }}>OPTION {c.id}</div>
                     <div style={{ fontSize: 13, color: "#ddd", marginBottom: 8, lineHeight: 1.5 }}>{c.label}</div>

@@ -8,6 +8,12 @@ import {
 import { SK, storeShared, readShared, deleteShared } from "../engine/multiplayer.js";
 import { callClaude, parseScenarioJSON, buildPrompt } from "../engine/scenarios.js";
 import { computeArchetype, resolveEnding } from "../engine/stateMachine.js";
+import { sfx, setSoundMuted, isSoundMuted } from "../engine/sounds.js";
+
+// P-07: Plausible custom event helper (no-ops if analytics not loaded)
+const plausible = (name, props) => {
+  try { window.plausible?.(name, { props }); } catch {}
+};
 
 export function useGameEngine() {
   // ─── CORE GAME STATE ────────────────────────────────────────────────────────
@@ -70,6 +76,9 @@ export function useGameEngine() {
   // Voice Narration
   const [narrationOn, setNarrationOn]   = useState(false);
 
+  // Sound FX
+  const [soundOn, setSoundOn]           = useState(true);
+
   // Replay Analyzer
   const [replayData, setReplayData]     = useState(null);
   const [analyzerError, setAnalyzerError] = useState("");
@@ -99,6 +108,9 @@ export function useGameEngine() {
   const proceedFromRippleRef            = useRef(null);
 
   const market = MARKET_CONDITIONS[marketIdx];
+
+  // ─── SYNC SOUND MUTE FLAG ────────────────────────────────────────────────────
+  useEffect(() => { setSoundMuted(!soundOn); }, [soundOn]);
 
   // ─── ON MOUNT: read URL seed param ─────────────────────────────────────────
   useEffect(() => {
@@ -243,6 +255,7 @@ export function useGameEngine() {
     if (!timerActive) return;
     timerRef.current = setInterval(() => {
       setTimeLeft((t) => {
+        if (t === 10) sfx.timerWarn();
         if (t <= 1) {
           if (timerActive) {
             clearInterval(timerRef.current);
@@ -369,6 +382,7 @@ export function useGameEngine() {
     if (newIdx !== marketIdx && !isRippleScenario) {
       const fromMarket = MARKET_CONDITIONS[marketIdx];
       const toMarket = MARKET_CONDITIONS[newIdx];
+      sfx.marketShift();
       setPendingMarketShift({ from: fromMarket.label, to: toMarket.label, newIdx });
       setMarketShiftRevealIdx(0);
       setScreen("MARKET_SHIFT");
@@ -421,6 +435,8 @@ export function useGameEngine() {
 
   // ─── START GAME ─────────────────────────────────────────────────────────────
   const startGame = (diff, key) => {
+    sfx.boot();
+    plausible('game_start', { difficulty: diff.label });
     setDifficulty(diff);
     setApiKey(key);
     setNetWorth(diff.startNetWorth);
@@ -440,6 +456,7 @@ export function useGameEngine() {
 
   const pick = (choice) => {
     if (!chosen) {
+      sfx.click();
       if (typeof speechSynthesis !== "undefined") speechSynthesis.cancel();
       setChosen(choice);
       setPendingConfidence(true);
@@ -464,6 +481,13 @@ export function useGameEngine() {
     }
     setLastChoiceForcedByTimer(forcedByTimer);
     if (forcedByTimer) setChosen(c);
+
+    // Sound + analytics: outcome quality
+    if (forcedByTimer) sfx.timerExpired();
+    else if (['OPTIMAL', 'GOOD'].includes(c.quality)) sfx.good();
+    else if (c.quality === 'NEUTRAL') sfx.neutral();
+    else sfx.bad();
+    plausible('choice_made', { quality: c.quality, round, category: scenario.category });
 
     setCalibrationLog(prev => [...prev, {
       round,
@@ -512,6 +536,7 @@ export function useGameEngine() {
           round >= 2
         ) {
           const newFiredRipples = [...firedRipples, flag];
+          sfx.ripple();
           setFiredRipples(newFiredRipples);
           setActiveRipple({ flag, ...trigger });
           setScenario(null);
@@ -613,6 +638,9 @@ export function useGameEngine() {
       } catch {}
 
       setEndData({ stats: finalStats, archetype: arc, history: newHistory, finalNetWorth: newWorth, p2FinalNetWorth: p2NetWorth });
+      if (['S', 'A'].includes(arc.grade)) sfx.win();
+      else sfx.lose();
+      plausible('game_end', { grade: arc.grade, archetype: arc.title, difficulty: difficulty.label });
       setScreen("END");
     }
   };
@@ -810,6 +838,7 @@ export function useGameEngine() {
     hoverConfidence, setHoverConfidence,
     calibrationLog,
     narrationOn, setNarrationOn,
+    soundOn, setSoundOn,
     replayData, setReplayData,
     analyzerError, setAnalyzerError,
     roundLogOpen, setRoundLogOpen,
