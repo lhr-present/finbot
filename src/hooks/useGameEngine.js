@@ -1,6 +1,8 @@
-// ─── useGameEngine — wires all game state, effects, and handlers ──────────────
+// ─── useGameEngine — game effects, refs, and handlers (state via Zustand) ──────
+// State lives in src/engine/store.js. This hook wires effects + handlers and
+// returns the same API surface as before — render layer is unchanged.
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useCallback } from "react";
 import {
   DIFFICULTIES, MARKET_CONDITIONS, CATEGORIES, RIPPLE_TRIGGERS,
   QUALITY_META, FALLBACKS, SPIN_CHARS,
@@ -8,7 +10,8 @@ import {
 import { SK, storeShared, readShared, deleteShared } from "../engine/multiplayer.js";
 import { callClaude, parseScenarioJSON, buildPrompt } from "../engine/scenarios.js";
 import { computeArchetype, resolveEnding } from "../engine/stateMachine.js";
-import { sfx, setSoundMuted, isSoundMuted } from "../engine/sounds.js";
+import { sfx, setSoundMuted } from "../engine/sounds.js";
+import { useGameStore, st, stf, get, initialState } from "../engine/store.js";
 
 // P-07: Plausible custom event helper (no-ops if analytics not loaded)
 const plausible = (name, props) => {
@@ -16,96 +19,30 @@ const plausible = (name, props) => {
 };
 
 export function useGameEngine() {
-  // ─── CORE GAME STATE ────────────────────────────────────────────────────────
-  const [screen, setScreen]             = useState("BOOT");
-  const [difficulty, setDifficulty]     = useState(null);
-  const [apiKey, setApiKey]             = useState(
-    typeof import.meta !== "undefined" ? (import.meta.env?.VITE_ANTHROPIC_API_KEY || "") : ""
-  );
-  const [netWorth, setNetWorth]         = useState(0);
-  const [round, setRound]               = useState(0);
-  const [dna, setDna]                   = useState({ flags: new Set(), riskScore: 0, disciplineScore: 0 });
-  const [scenario, setScenario]         = useState(null);
-  const [chosen, setChosen]             = useState(null);
-  const [loading, setLoading]           = useState(false);
-  const [apiError, setApiError]         = useState("");
-  const [usedFallback, setUsedFallback] = useState(false);
-  const [history, setHistory]           = useState([]);
-  const [biasHistory, setBiasHistory]   = useState([]);
-  const [marketIdx, setMarketIdx]       = useState(0);
-  const [pendingMarketShift, setPendingMarketShift] = useState(null);
-  const [marketShiftRevealIdx, setMarketShiftRevealIdx] = useState(0);
-  const handleMarketShiftRef            = useRef(null);
-  const [catHistory, setCatHistory]     = useState([]);
-  const [showBias, setShowBias]         = useState(false);
-  const [leaderboard, setLeaderboard]   = useState([]);
-  const [endData, setEndData]           = useState(null);
-  const [bootText, setBootText]         = useState("");
-  const [callsign, setCallsign]         = useState("");
-  const [callsignSaved, setCallsignSaved] = useState(false);
 
-  // Feature 1: Seed Mode
-  const [seedValue, setSeedValue]       = useState("");
-  const [seedMode, setSeedMode]         = useState(false);
-  const [copied, setCopied]             = useState(false);
+  // ─── SUBSCRIBE TO STORE ─────────────────────────────────────────────────────
+  const {
+    screen, difficulty, apiKey, netWorth, round, dna, scenario, chosen, loading,
+    apiError, usedFallback, history, biasHistory, marketIdx, pendingMarketShift,
+    marketShiftRevealIdx, catHistory, showBias, leaderboard, endData, bootText,
+    callsign, callsignSaved, seedValue, seedMode, copied,
+    flagDuration, firedRipples, activeRipple, isRippleScenario, rippleProgress,
+    pressureMode, timeLeft, timerActive, timeExpired, decisionTimes, lastChoiceForcedByTimer,
+    pendingConfidence, confidenceRating, hoverConfidence, calibrationLog,
+    narrationOn, soundOn, replayData, analyzerError, roundLogOpen, installPrompt,
+    multiMode, sessionCode, playerNum, sessionPhase,
+    p2NetWorth, p2Choice, p2Quality, p2Outcome, p2NetEffect,
+    lobbyCode, lobbyError, storageOk, spinFrame,
+  } = useGameStore();
 
-  // Feature 2: Ripple Events
-  const [flagDuration, setFlagDuration] = useState({});
-  const [firedRipples, setFiredRipples] = useState([]);
-  const [activeRipple, setActiveRipple] = useState(null);
-  const [isRippleScenario, setIsRippleScenario] = useState(false);
-  const [rippleProgress, setRippleProgress] = useState(0);
-  const rippleInjectionRef              = useRef("");
-  const rippleTimerRef                  = useRef(null);
-
-  // Feature 3: Time Pressure
-  const [pressureMode, setPressureMode] = useState(false);
-  const [timeLeft, setTimeLeft]         = useState(45);
-  const [timerActive, setTimerActive]   = useState(false);
-  const [timeExpired, setTimeExpired]   = useState(false);
-  const [decisionTimes, setDecisionTimes] = useState([]);
-  const [lastChoiceForcedByTimer, setLastChoiceForcedByTimer] = useState(false);
-  const timerRef                        = useRef(null);
-
-  // Confidence Meter
-  const [pendingConfidence, setPendingConfidence] = useState(false);
-  const [confidenceRating, setConfidenceRating]   = useState(null);
-  const [hoverConfidence, setHoverConfidence]     = useState(null);
-  const [calibrationLog, setCalibrationLog]       = useState([]);
-
-  // Voice Narration
-  const [narrationOn, setNarrationOn]   = useState(false);
-
-  // Sound FX
-  const [soundOn, setSoundOn]           = useState(true);
-
-  // Replay Analyzer
-  const [replayData, setReplayData]     = useState(null);
-  const [analyzerError, setAnalyzerError] = useState("");
-  const [roundLogOpen, setRoundLogOpen] = useState(false);
-
-  // PWA install prompt
-  const [installPrompt, setInstallPrompt] = useState(null);
-
-  // Feature 4: Multiplayer
-  const [multiMode, setMultiMode]       = useState(false);
-  const [sessionCode, setSessionCode]   = useState("");
-  const [playerNum, setPlayerNum]       = useState(1);
-  const [sessionPhase, setSessionPhase] = useState("LOBBY");
-  const [p2NetWorth, setP2NetWorth]     = useState(0);
-  const [p2Choice, setP2Choice]         = useState(null);
-  const [p2Quality, setP2Quality]       = useState(null);
-  const [p2Outcome, setP2Outcome]       = useState(null);
-  const [p2NetEffect, setP2NetEffect]   = useState(null);
-  const [lobbyCode, setLobbyCode]       = useState("");
-  const [lobbyError, setLobbyError]     = useState("");
-  const [storageOk, setStorageOk]       = useState(true);
-  const [spinFrame, setSpinFrame]       = useState(0);
-  const pollRef                         = useRef(null);
-
-  // Ref for fresh closures
-  const confirmChoiceRef                = useRef(null);
-  const proceedFromRippleRef            = useRef(null);
+  // ─── REFS (must stay in React hook) ─────────────────────────────────────────
+  const confirmChoiceRef      = useRef(null);
+  const proceedFromRippleRef  = useRef(null);
+  const handleMarketShiftRef  = useRef(null);
+  const rippleInjectionRef    = useRef("");
+  const rippleTimerRef        = useRef(null);
+  const timerRef              = useRef(null);
+  const pollRef               = useRef(null);
 
   const market = MARKET_CONDITIONS[marketIdx];
 
@@ -117,13 +54,13 @@ export function useGameEngine() {
     try {
       const params = new URLSearchParams(window.location.search);
       const s = params.get("seed");
-      if (s) { setSeedValue(s); setSeedMode(true); }
+      if (s) st({ seedValue: s, seedMode: true });
     } catch {}
   }, []);
 
   // ─── SPINNER ────────────────────────────────────────────────────────────────
   useEffect(() => {
-    const t = setInterval(() => setSpinFrame((f) => (f + 1) % 4), 250);
+    const t = setInterval(() => stf(s => ({ spinFrame: (s.spinFrame + 1) % 4 })), 250);
     return () => clearInterval(t);
   }, []);
 
@@ -143,14 +80,14 @@ export function useGameEngine() {
     const t = setInterval(() => {
       if (i >= lines.length) { clearInterval(t); return; }
       acc += (i > 0 ? "\n" : "") + lines[i++];
-      setBootText(acc);
+      st({ bootText: acc });
     }, 320);
     return () => clearInterval(t);
   }, [screen]);
 
   // ─── LOAD LEADERBOARD ───────────────────────────────────────────────────────
   useEffect(() => {
-    try { setLeaderboard(JSON.parse(localStorage.getItem("finbot_lb") || "[]")); } catch {}
+    try { st({ leaderboard: JSON.parse(localStorage.getItem("finbot_lb") || "[]") }); } catch {}
   }, []);
 
   // ─── CHECK STORAGE AVAILABILITY ─────────────────────────────────────────────
@@ -159,8 +96,8 @@ export function useGameEngine() {
       try {
         localStorage.setItem("finbot_storage_test", "1");
         localStorage.removeItem("finbot_storage_test");
-        setStorageOk(true);
-      } catch { setStorageOk(false); }
+        st({ storageOk: true });
+      } catch { st({ storageOk: false }); }
     }
   }, [screen]);
 
@@ -171,10 +108,8 @@ export function useGameEngine() {
       const sess = await readShared(SK.session(sessionCode));
       if (sess && sess.p2ready) {
         clearInterval(pollRef.current);
-        setSessionPhase("BOTH_READY");
-        setTimeout(() => {
-          setScreen("GAME");
-        }, 3000);
+        st({ sessionPhase: "BOTH_READY" });
+        setTimeout(() => st({ screen: "GAME" }), 3000);
       }
     }, 1500);
     return () => clearInterval(pollRef.current);
@@ -183,9 +118,7 @@ export function useGameEngine() {
   // ─── B-05: P1 DISCONNECT FLAG ON UNLOAD ─────────────────────────────────────
   useEffect(() => {
     if (!multiMode || playerNum !== 1 || !sessionCode) return;
-    const handler = () => {
-      storeShared(SK.disconnect(sessionCode), { at: Date.now() });
-    };
+    const handler = () => storeShared(SK.disconnect(sessionCode), { at: Date.now() });
     window.addEventListener("beforeunload", handler);
     return () => window.removeEventListener("beforeunload", handler);
   }, [multiMode, playerNum, sessionCode]);
@@ -193,12 +126,12 @@ export function useGameEngine() {
   // ─── FEATURE 2: RIPPLE SCREEN ANIMATION ─────────────────────────────────────
   useEffect(() => {
     if (screen !== "RIPPLE") return;
-    setRippleProgress(0);
+    st({ rippleProgress: 0 });
     let prog = 0;
     const step = 100 / 25;
     const interval = setInterval(() => {
       prog = Math.min(100, prog + step);
-      setRippleProgress(prog);
+      st({ rippleProgress: prog });
     }, 100);
 
     rippleTimerRef.current = setTimeout(() => {
@@ -215,12 +148,12 @@ export function useGameEngine() {
   // ─── B-03: MARKET SHIFT TYPEWRITER ──────────────────────────────────────────
   useEffect(() => {
     if (screen !== "MARKET_SHIFT" || !pendingMarketShift) return;
-    setMarketShiftRevealIdx(0);
+    st({ marketShiftRevealIdx: 0 });
     const target = pendingMarketShift.to;
     let idx = 0;
     const t = setInterval(() => {
       idx++;
-      setMarketShiftRevealIdx(idx);
+      st({ marketShiftRevealIdx: idx });
       if (idx >= target.length) clearInterval(t);
     }, 80);
     return () => clearInterval(t);
@@ -239,32 +172,27 @@ export function useGameEngine() {
   // ─── FEATURE 3: TIMER START/STOP ────────────────────────────────────────────
   useEffect(() => {
     if (screen === "GAME" && pressureMode && !chosen) {
-      setTimeLeft(45);
-      setTimeExpired(false);
-      setTimerActive(true);
+      st({ timeLeft: 45, timeExpired: false, timerActive: true });
     } else {
       if (timerActive) {
         clearInterval(timerRef.current);
-        setTimerActive(false);
+        st({ timerActive: false });
       }
     }
-  }, [screen, pressureMode, chosen]);
+  }, [screen, pressureMode, chosen]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── FEATURE 3: TIMER COUNTDOWN ─────────────────────────────────────────────
   useEffect(() => {
     if (!timerActive) return;
     timerRef.current = setInterval(() => {
-      setTimeLeft((t) => {
+      stf(s => {
+        const t = s.timeLeft;
         if (t === 10) sfx.timerWarn();
         if (t <= 1) {
-          if (timerActive) {
-            clearInterval(timerRef.current);
-            setTimerActive(false);
-          }
-          setTimeExpired(true);
-          return 0;
+          clearInterval(timerRef.current);
+          return { timeLeft: 0, timerActive: false, timeExpired: true };
         }
-        return t - 1;
+        return { timeLeft: t - 1 };
       });
     }, 1000);
     return () => clearInterval(timerRef.current);
@@ -279,7 +207,7 @@ export function useGameEngine() {
       return rank < worstRank ? c : worst;
     }, scenario.choices?.[0]);
     if (!worstChoice) return;
-    setDecisionTimes((dt) => [...dt, { round, secondsLeft: 0 }]);
+    stf(s => ({ decisionTimes: [...s.decisionTimes, { round: s.round, secondsLeft: 0 }] }));
     if (confirmChoiceRef.current) confirmChoiceRef.current(worstChoice, true);
   }, [timeExpired, screen, scenario, chosen, round]);
 
@@ -308,11 +236,11 @@ export function useGameEngine() {
       biasesHit:        [...new Set(h.map(e => e.choice?.biasWarning).filter(Boolean))],
       ripplesFired:     firedRipples || [],
       seed:             seedValue || null,
-      pressureMode:     pressureMode,
+      pressureMode,
       disciplineScore:  stats.disciplineScore ?? dna.disciplineScore,
       difficulty:       difficulty?.label || null,
       totalRounds:      h.length,
-      version:          "3.7",
+      version:          "4.0",
     };
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 3000);
@@ -339,7 +267,7 @@ export function useGameEngine() {
 
   // ─── PWA INSTALL PROMPT CAPTURE ─────────────────────────────────────────────
   useEffect(() => {
-    const handler = (e) => { e.preventDefault(); setInstallPrompt(e); };
+    const handler = (e) => { e.preventDefault(); st({ installPrompt: e }); };
     window.addEventListener("beforeinstallprompt", handler);
     return () => window.removeEventListener("beforeinstallprompt", handler);
   }, []);
@@ -347,9 +275,7 @@ export function useGameEngine() {
   // ─── FETCH SCENARIO ─────────────────────────────────────────────────────────
   const fetchScenario = useCallback(async () => {
     if (!difficulty) return;
-    setLoading(true);
-    setApiError("");
-    setChosen(null);
+    st({ loading: true, apiError: "", chosen: null });
 
     // Feature 4: P2 polls for scenario from P1
     if (multiMode && playerNum === 2) {
@@ -359,19 +285,15 @@ export function useGameEngine() {
         if (dc) {
           clearInterval(pollRef.current);
           await deleteShared(SK.disconnect(sessionCode));
-          setMultiMode(false);
-          setLoading(false);
-          setLobbyError("P1 disconnected — continuing solo");
-          setTimeout(() => setLobbyError(""), 2500);
-          setScreen("GAME");
+          st({ multiMode: false, loading: false, lobbyError: "P1 disconnected — continuing solo", screen: "GAME" });
+          setTimeout(() => st({ lobbyError: "" }), 2500);
           return;
         }
         const roundData = await readShared(SK.round(sessionCode));
         if (roundData && roundData.scenario) {
           clearInterval(pollRef.current);
-          setScenario(roundData.scenario);
-          setCatHistory((p) => [...p, roundData.scenario.category]);
-          setLoading(false);
+          stf(s => ({ catHistory: [...s.catHistory, roundData.scenario.category] }));
+          st({ scenario: roundData.scenario, loading: false });
         }
       }, 1500);
       return;
@@ -381,12 +303,9 @@ export function useGameEngine() {
     const newIdx = Math.floor((round - 1) / 4) % MARKET_CONDITIONS.length;
     if (newIdx !== marketIdx && !isRippleScenario) {
       const fromMarket = MARKET_CONDITIONS[marketIdx];
-      const toMarket = MARKET_CONDITIONS[newIdx];
+      const toMarket   = MARKET_CONDITIONS[newIdx];
       sfx.marketShift();
-      setPendingMarketShift({ from: fromMarket.label, to: toMarket.label, newIdx });
-      setMarketShiftRevealIdx(0);
-      setScreen("MARKET_SHIFT");
-      setLoading(false);
+      st({ pendingMarketShift: { from: fromMarket.label, to: toMarket.label, newIdx }, marketShiftRevealIdx: 0, screen: "MARKET_SHIFT", loading: false });
       return;
     }
 
@@ -398,35 +317,33 @@ export function useGameEngine() {
     try {
       if (activeKey?.startsWith("sk-ant")) {
         let prompt = buildPrompt(dna, difficulty, market, catHistory, round, seedValue);
-        if (injection) {
-          prompt = injection + "\n\n" + prompt;
-        }
+        if (injection) prompt = injection + "\n\n" + prompt;
         const raw = await callClaude(activeKey, prompt);
         parsed = parseScenarioJSON(raw);
       }
     } catch (e) {
       const msg = e.name === "AbortError" ? "Request timed out (12s)" : e.message;
-      setApiError(`${msg} — using fallback`);
+      st({ apiError: `${msg} — using fallback` });
       parsed = FALLBACKS.BEHAVIORAL;
     }
 
     if (!parsed) {
-      setUsedFallback(true);
       const availCats = CATEGORIES.filter((c) => !catHistory.slice(-3).includes(c));
       const cat = availCats[round % availCats.length] || "INVESTING";
       parsed = FALLBACKS[cat] || FALLBACKS.INVESTING;
+      st({ usedFallback: true });
     } else {
-      setUsedFallback(false);
+      st({ usedFallback: false });
     }
 
-    setScenario(parsed);
-    setCatHistory((p) => [...p, parsed.category]);
+    stf(s => ({ catHistory: [...s.catHistory, parsed.category] }));
+    st({ scenario: parsed });
 
     if (multiMode && playerNum === 1) {
       await storeShared(SK.round(sessionCode), { scenario: parsed, round });
     }
 
-    setLoading(false);
+    st({ loading: false });
   }, [round, difficulty, apiKey, dna, marketIdx, market, catHistory, multiMode, playerNum, sessionCode, seedValue, isRippleScenario]);
 
   useEffect(() => {
@@ -437,211 +354,197 @@ export function useGameEngine() {
   const startGame = (diff, key) => {
     sfx.boot();
     plausible('game_start', { difficulty: diff.label });
-    setDifficulty(diff);
-    setApiKey(key);
-    setNetWorth(diff.startNetWorth);
-    setDna({ flags: new Set(diff.startingFlags), riskScore: 0, disciplineScore: 0 });
-    setRound(1);
-    setHistory([]); setBiasHistory([]); setCatHistory([]);
-    setMarketIdx(0); setPendingMarketShift(null); setMarketShiftRevealIdx(0);
-    setScenario(null); setChosen(null);
-    setFlagDuration({}); setFiredRipples([]); setActiveRipple(null); setIsRippleScenario(false);
-    setDecisionTimes([]); setLastChoiceForcedByTimer(false); setTimeLeft(45); setTimerActive(false); setTimeExpired(false);
-    setCalibrationLog([]); setConfidenceRating(null); setPendingConfidence(false); setHoverConfidence(null);
-    setMultiMode(false); setP2NetWorth(0); setP2Choice(null); setP2Quality(null); setP2Outcome(null); setP2NetEffect(null);
-    setNarrationOn(false);
+    st({
+      difficulty: diff,
+      apiKey: key,
+      netWorth: diff.startNetWorth,
+      dna: { flags: new Set(diff.startingFlags), riskScore: 0, disciplineScore: 0 },
+      round: 1,
+      history: [], biasHistory: [], catHistory: [],
+      marketIdx: 0, pendingMarketShift: null, marketShiftRevealIdx: 0,
+      scenario: null, chosen: null,
+      flagDuration: {}, firedRipples: [], activeRipple: null, isRippleScenario: false,
+      decisionTimes: [], lastChoiceForcedByTimer: false, timeLeft: 45, timerActive: false, timeExpired: false,
+      calibrationLog: [], confidenceRating: null, pendingConfidence: false, hoverConfidence: null,
+      multiMode: false, p2NetWorth: 0, p2Choice: null, p2Quality: null, p2Outcome: null, p2NetEffect: null,
+      narrationOn: false,
+      screen: "GAME",
+    });
     if (typeof speechSynthesis !== "undefined") speechSynthesis.cancel();
-    setScreen("GAME");
   };
 
+  // ─── PICK ────────────────────────────────────────────────────────────────────
   const pick = (choice) => {
     if (!chosen) {
       sfx.click();
       if (typeof speechSynthesis !== "undefined") speechSynthesis.cancel();
-      setChosen(choice);
-      setPendingConfidence(true);
-      setConfidenceRating(null);
-      setHoverConfidence(null);
+      st({ chosen: choice, pendingConfidence: true, confidenceRating: null, hoverConfidence: null });
     }
   };
 
   // ─── CONFIRM CHOICE ─────────────────────────────────────────────────────────
   const confirmChoice = (choiceObj = null, forcedByTimer = false, explicitConfidence = null) => {
-    const c = choiceObj || chosen;
-    if (!c || !scenario || !difficulty) return;
+    const s = get();
+    const c = choiceObj || s.chosen;
+    if (!c || !s.scenario || !s.difficulty) return;
 
-    // Stop timer (B-07: guard against double-clear)
-    if (timerActive) {
+    // Stop timer (B-07)
+    if (s.timerActive) {
       clearInterval(timerRef.current);
-      setTimerActive(false);
+      st({ timerActive: false });
     }
 
-    if (pressureMode && !forcedByTimer) {
-      setDecisionTimes((dt) => [...dt, { round, secondsLeft: timeLeft }]);
+    if (s.pressureMode && !forcedByTimer) {
+      stf(prev => ({ decisionTimes: [...prev.decisionTimes, { round: s.round, secondsLeft: s.timeLeft }] }));
     }
-    setLastChoiceForcedByTimer(forcedByTimer);
-    if (forcedByTimer) setChosen(c);
+    st({ lastChoiceForcedByTimer: forcedByTimer });
+    if (forcedByTimer) st({ chosen: c });
 
-    // Sound + analytics: outcome quality
+    // Sound + analytics
     if (forcedByTimer) sfx.timerExpired();
     else if (['OPTIMAL', 'GOOD'].includes(c.quality)) sfx.good();
     else if (c.quality === 'NEUTRAL') sfx.neutral();
     else sfx.bad();
-    plausible('choice_made', { quality: c.quality, round, category: scenario.category });
+    plausible('choice_made', { quality: c.quality, round: s.round, category: s.scenario.category });
 
-    setCalibrationLog(prev => [...prev, {
-      round,
-      confidence: forcedByTimer ? 0 : (explicitConfidence !== null ? explicitConfidence : (confidenceRating || 0)),
-      wasGood: ['OPTIMAL', 'GOOD'].includes(c.quality),
-      quality: c.quality,
-    }]);
-    setConfidenceRating(null);
-    setPendingConfidence(false);
+    stf(prev => ({
+      calibrationLog: [...prev.calibrationLog, {
+        round: s.round,
+        confidence: forcedByTimer ? 0 : (explicitConfidence !== null ? explicitConfidence : (s.confidenceRating || 0)),
+        wasGood: ['OPTIMAL', 'GOOD'].includes(c.quality),
+        quality: c.quality,
+      }],
+    }));
+    st({ confidenceRating: null, pendingConfidence: false });
 
-    const newWorth = Math.max(0, netWorth + c.netEffect);
+    const newWorth = Math.max(0, s.netWorth + c.netEffect);
 
-    const newFlags = new Set([...dna.flags]);
-    (c.flagsAdd || []).forEach((f) => newFlags.add(f));
-    (c.flagsRemove || []).forEach((f) => newFlags.delete(f));
+    const newFlags = new Set([...s.dna.flags]);
+    (c.flagsAdd || []).forEach(f => newFlags.add(f));
+    (c.flagsRemove || []).forEach(f => newFlags.delete(f));
     const newDna = {
       flags: newFlags,
-      riskScore: Math.min(100, dna.riskScore + (["CATASTROPHIC","POOR"].includes(c.quality) ? 15 : c.quality === "OPTIMAL" ? -5 : 0)),
-      disciplineScore: Math.min(100, dna.disciplineScore + (["OPTIMAL","GOOD"].includes(c.quality) ? 10 : 0)),
+      riskScore: Math.min(100, s.dna.riskScore + (["CATASTROPHIC","POOR"].includes(c.quality) ? 15 : c.quality === "OPTIMAL" ? -5 : 0)),
+      disciplineScore: Math.min(100, s.dna.disciplineScore + (["OPTIMAL","GOOD"].includes(c.quality) ? 10 : 0)),
     };
 
-    if (c.biasWarning) setBiasHistory((p) => [...p, { round, bias: c.biasWarning, quality: c.quality }]);
+    if (c.biasWarning) stf(prev => ({ biasHistory: [...prev.biasHistory, { round: s.round, bias: c.biasWarning, quality: c.quality }] }));
 
-    const entry = { round, category: scenario.category, title: scenario.title, choice: c, netEffect: c.netEffect, netWorthAfter: newWorth, market: market.id };
-    const newHistory = [...history, entry];
-    setHistory(newHistory);
-    setNetWorth(newWorth);
-    setDna(newDna);
+    const entry = { round: s.round, category: s.scenario.category, title: s.scenario.title, choice: c, netEffect: c.netEffect, netWorthAfter: newWorth, market: s.market?.id || market.id };
+    const newHistory = [...s.history, entry];
+
+    st({ history: newHistory, netWorth: newWorth, dna: newDna });
 
     // B-04 fix: build flagDuration from scratch
     const newFlagDuration = {};
     for (const flag of newFlags) {
-      newFlagDuration[flag] = (flagDuration[flag] || 0) + 1;
+      newFlagDuration[flag] = (s.flagDuration[flag] || 0) + 1;
     }
-    setFlagDuration(newFlagDuration);
+    st({ flagDuration: newFlagDuration });
 
-    const nextRound = round + 1;
-    const gameOver = newWorth <= 0 || nextRound > difficulty.rounds || newWorth >= difficulty.target;
+    const nextRound = s.round + 1;
+    const gameOver = newWorth <= 0 || nextRound > s.difficulty.rounds || newWorth >= s.difficulty.target;
 
     if (!gameOver) {
       // Feature 2: check ripple triggers
       for (const [flag, trigger] of Object.entries(RIPPLE_TRIGGERS)) {
         if (
           newFlagDuration[flag] >= trigger.threshold &&
-          !firedRipples.includes(flag) &&
-          round >= 2
+          !s.firedRipples.includes(flag) &&
+          s.round >= 2
         ) {
-          const newFiredRipples = [...firedRipples, flag];
           sfx.ripple();
-          setFiredRipples(newFiredRipples);
-          setActiveRipple({ flag, ...trigger });
-          setScenario(null);
-          setChosen(null);
-          setScreen("RIPPLE");
+          const newFiredRipples = [...s.firedRipples, flag];
+          st({ firedRipples: newFiredRipples, activeRipple: { flag, ...trigger }, scenario: null, chosen: null, screen: "RIPPLE" });
           return;
         }
       }
 
       // Feature 4: multiplayer path
-      if (multiMode) {
-        const worthKey = playerNum === 1 ? SK.p1Worth(sessionCode) : SK.p2Worth(sessionCode);
-        const choiceKey = playerNum === 1 ? SK.p1Choice(sessionCode) : SK.p2Choice(sessionCode);
+      if (s.multiMode) {
+        const worthKey  = s.playerNum === 1 ? SK.p1Worth(s.sessionCode) : SK.p2Worth(s.sessionCode);
+        const choiceKey = s.playerNum === 1 ? SK.p1Choice(s.sessionCode) : SK.p2Choice(s.sessionCode);
         storeShared(worthKey, newWorth);
         storeShared(choiceKey, { label: c.label, quality: c.quality, netEffect: c.netEffect, outcome: c.outcome });
-        setScreen("WAITING_REVEAL");
+        st({ screen: "WAITING_REVEAL" });
 
         let elapsed = 0;
         clearInterval(pollRef.current);
         pollRef.current = setInterval(async () => {
           elapsed += 1500;
-          if (playerNum === 2) {
-            const dc = await readShared(SK.disconnect(sessionCode));
+          if (s.playerNum === 2) {
+            const dc = await readShared(SK.disconnect(s.sessionCode));
             if (dc) {
               clearInterval(pollRef.current);
-              await deleteShared(SK.disconnect(sessionCode));
-              setMultiMode(false);
-              setP2Choice(null); setP2Quality(null); setP2Outcome(null); setP2NetEffect(null);
-              setLobbyError("P1 disconnected — continuing solo");
-              setTimeout(() => setLobbyError(""), 2500);
-              setRound(nextRound);
-              setScenario(null);
-              setChosen(null);
-              setIsRippleScenario(false);
-              setScreen("GAME");
+              await deleteShared(SK.disconnect(s.sessionCode));
+              st({ multiMode: false, p2Choice: null, p2Quality: null, p2Outcome: null, p2NetEffect: null,
+                lobbyError: "P1 disconnected — continuing solo" });
+              setTimeout(() => st({ lobbyError: "" }), 2500);
+              st({ round: nextRound, scenario: null, chosen: null, isRippleScenario: false, screen: "GAME" });
               return;
             }
           }
-          const oppKey = playerNum === 1 ? SK.p2Choice(sessionCode) : SK.p1Choice(sessionCode);
-          const oppWorthKey = playerNum === 1 ? SK.p2Worth(sessionCode) : SK.p1Worth(sessionCode);
-          const oppChoice = await readShared(oppKey);
-          const oppWorth = await readShared(oppWorthKey);
+          const oppKey      = s.playerNum === 1 ? SK.p2Choice(s.sessionCode) : SK.p1Choice(s.sessionCode);
+          const oppWorthKey = s.playerNum === 1 ? SK.p2Worth(s.sessionCode) : SK.p1Worth(s.sessionCode);
+          const oppChoice   = await readShared(oppKey);
+          const oppWorth    = await readShared(oppWorthKey);
           if (oppChoice) {
             clearInterval(pollRef.current);
-            setP2Choice(oppChoice.label);
-            setP2Quality(oppChoice.quality);
-            setP2Outcome(oppChoice.outcome);
-            setP2NetEffect(oppChoice.netEffect);
-            if (oppWorth !== null) setP2NetWorth(oppWorth);
-            await deleteShared(SK.p1Choice(sessionCode));
-            await deleteShared(SK.p2Choice(sessionCode));
-            setScreen("GAME");
+            st({
+              p2Choice: oppChoice.label, p2Quality: oppChoice.quality,
+              p2Outcome: oppChoice.outcome, p2NetEffect: oppChoice.netEffect,
+              p2NetWorth: oppWorth ?? 0,
+              screen: "GAME",
+            });
           } else if (elapsed >= 30000) {
             clearInterval(pollRef.current);
-            setMultiMode(false);
-            setRound(nextRound);
-            setScenario(null);
-            setChosen(null);
-            setIsRippleScenario(false);
-            setScreen("GAME");
+            st({ screen: "GAME" });
           }
         }, 1500);
         return;
       }
 
-      setRound(nextRound);
-      setScenario(null);
-      setChosen(null);
-      setIsRippleScenario(false);
+      st({ round: nextRound, scenario: null, chosen: null, isRippleScenario: false });
     } else {
-      // Game over
-      const optimal = newHistory.filter((h) => h.choice.quality === "OPTIMAL").length;
-      const catastrophic = newHistory.filter((h) => h.choice.quality === "CATASTROPHIC").length;
-      const highRisk = newHistory.filter((h) => ["FOMO","HERD_MENTALITY"].includes(h.choice.biasWarning) || h.choice.quality === "CATASTROPHIC").length;
-      const half = Math.floor(newHistory.length / 2);
-      const firstHalf = newHistory.slice(0, half).filter((h) => h.choice.quality === "OPTIMAL").length / Math.max(1, half);
-      const secondHalf = newHistory.slice(half).filter((h) => h.choice.quality === "OPTIMAL").length / Math.max(1, newHistory.length - half);
+      // GAME OVER
+      const totalR     = newHistory.length;
+      const optimalRate = totalR > 0 ? newHistory.filter(h => h.choice.quality === 'OPTIMAL').length / totalR : 0;
+      const catastrophicCount = newHistory.filter(h => h.choice.quality === 'CATASTROPHIC').length;
+      const highRiskChoices   = newHistory.filter(h => h.choice.quality === 'POOR' || h.choice.quality === 'CATASTROPHIC').length;
+      const half = Math.floor(totalR / 2);
+      const firstHalf  = newHistory.slice(0, half);
+      const secondHalf = newHistory.slice(half);
+      const firstHalfOptimal  = firstHalf.length  > 0 ? firstHalf.filter(h  => h.choice.quality === 'OPTIMAL').length / firstHalf.length  : 0;
+      const secondHalfOptimal = secondHalf.length > 0 ? secondHalf.filter(h => h.choice.quality === 'OPTIMAL').length / secondHalf.length : 0;
+
       const finalStats = {
-        optimalRate: optimal / Math.max(1, newHistory.length),
-        catastrophicCount: catastrophic,
-        disciplineScore: newDna.disciplineScore,
-        highRiskChoices: highRisk,
-        firstHalfOptimal: firstHalf,
-        secondHalfOptimal: secondHalf,
-        totalRounds: newHistory.length,
-        optimal,
         finalNetWorth: newWorth,
-        target: difficulty.target,
+        target: s.difficulty.target,
+        optimalRate,
+        catastrophicCount,
+        disciplineScore: newDna.disciplineScore,
+        highRiskChoices,
+        firstHalfOptimal,
+        secondHalfOptimal,
+        totalRounds: totalR,
       };
+
       const arc = computeArchetype(finalStats);
 
       try {
         const lb = JSON.parse(localStorage.getItem("finbot_lb") || "[]");
-        lb.push({ netWorth: newWorth, archetype: arc.title, grade: arc.grade, diff: difficulty.label, date: new Date().toLocaleDateString() });
+        lb.push({ netWorth: newWorth, archetype: arc.title, grade: arc.grade, diff: s.difficulty.label, date: new Date().toLocaleDateString() });
         lb.sort((a, b) => b.netWorth - a.netWorth);
         const top = lb.slice(0, 10);
         localStorage.setItem("finbot_lb", JSON.stringify(top));
-        setLeaderboard(top);
+        st({ leaderboard: top });
       } catch {}
 
-      setEndData({ stats: finalStats, archetype: arc, history: newHistory, finalNetWorth: newWorth, p2FinalNetWorth: p2NetWorth });
+      st({ endData: { stats: finalStats, archetype: arc, history: newHistory, finalNetWorth: newWorth, p2FinalNetWorth: s.p2NetWorth } });
       if (['S', 'A'].includes(arc.grade)) sfx.win();
       else sfx.lose();
-      plausible('game_end', { grade: arc.grade, archetype: arc.title, difficulty: difficulty.label });
-      setScreen("END");
+      plausible('game_end', { grade: arc.grade, archetype: arc.title, difficulty: s.difficulty.label });
+      st({ screen: "END" });
     }
   };
 
@@ -649,84 +552,69 @@ export function useGameEngine() {
   confirmChoiceRef.current = confirmChoice;
 
   handleMarketShiftRef.current = () => {
-    if (!pendingMarketShift) return;
-    setMarketIdx(pendingMarketShift.newIdx);
-    setPendingMarketShift(null);
-    setMarketShiftRevealIdx(0);
-    setScreen("GAME");
+    const s = get();
+    if (!s.pendingMarketShift) return;
+    st({ marketIdx: s.pendingMarketShift.newIdx, pendingMarketShift: null, marketShiftRevealIdx: 0, screen: "GAME" });
   };
 
   proceedFromRippleRef.current = () => {
     clearTimeout(rippleTimerRef.current);
-    rippleInjectionRef.current = activeRipple ? activeRipple.promptInjection : "";
-    setIsRippleScenario(true);
-    setScreen("GAME");
+    const s = get();
+    rippleInjectionRef.current = s.activeRipple ? s.activeRipple.promptInjection : "";
+    st({ isRippleScenario: true, screen: "GAME" });
   };
 
   // ─── MULTIPLAYER: NEXT ROUND ─────────────────────────────────────────────────
   const nextMultiRound = () => {
-    setP2Choice(null); setP2Quality(null); setP2Outcome(null); setP2NetEffect(null);
-    setChosen(null); setScenario(null); setIsRippleScenario(false);
+    const s = get();
+    st({ p2Choice: null, p2Quality: null, p2Outcome: null, p2NetEffect: null, chosen: null, scenario: null, isRippleScenario: false });
 
     for (const [flag, trigger] of Object.entries(RIPPLE_TRIGGERS)) {
-      if (
-        flagDuration[flag] >= trigger.threshold &&
-        !firedRipples.includes(flag) &&
-        round >= 2
-      ) {
-        const newFiredRipples = [...firedRipples, flag];
-        setFiredRipples(newFiredRipples);
-        setActiveRipple({ flag, ...trigger });
-        setScreen("RIPPLE");
+      if (s.flagDuration[flag] >= trigger.threshold && !s.firedRipples.includes(flag) && s.round >= 2) {
+        sfx.ripple();
+        st({ firedRipples: [...s.firedRipples, flag], activeRipple: { flag, ...trigger }, screen: "RIPPLE" });
         return;
       }
     }
 
-    setRound((r) => r + 1);
+    stf(prev => ({ round: prev.round + 1 }));
   };
 
+  // ─── SAVE CALLSIGN ──────────────────────────────────────────────────────────
   const saveCallsign = (data) => {
-    const tag = callsign.trim().toUpperCase().slice(0, 3) || "---";
+    const s = get();
+    const tag = s.callsign.trim().toUpperCase().slice(0, 3) || "---";
     try {
       const lb = JSON.parse(localStorage.getItem("finbot_lb") || "[]");
-      const filtered = lb.filter((e) => e.callsign !== tag);
+      const filtered = lb.filter(e => e.callsign !== tag);
       filtered.push({
-        callsign: tag,
-        netWorth: data.stats.finalNetWorth,
-        archetype: data.archetype.title,
-        grade: data.archetype.grade,
-        optimalRate: data.stats.optimalRate,
-        diff: difficulty?.label,
-        date: new Date().toLocaleDateString(),
+        callsign: tag, netWorth: data.stats.finalNetWorth, archetype: data.archetype.title,
+        grade: data.archetype.grade, optimalRate: data.stats.optimalRate,
+        diff: s.difficulty?.label, date: new Date().toLocaleDateString(),
       });
       filtered.sort((a, b) => b.netWorth - a.netWorth);
       const top = filtered.slice(0, 10);
       localStorage.setItem("finbot_lb", JSON.stringify(top));
-      setLeaderboard(top);
+      st({ leaderboard: top });
     } catch {}
 
     const worstBias = Object.entries(
-      biasHistory.reduce((acc, b) => { acc[b.bias] = (acc[b.bias] || 0) + 1; return acc; }, {})
+      s.biasHistory.reduce((acc, b) => { acc[b.bias] = (acc[b.bias] || 0) + 1; return acc; }, {})
     ).sort((a, b) => b[1] - a[1])[0]?.[0] || "-";
 
     fetch("http://localhost:3001/session", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        callsign: tag,
-        netWorth: data.stats.finalNetWorth,
-        archetype: data.archetype.title,
-        grade: data.archetype.grade,
-        optimalRate: data.stats.optimalRate,
-        worstBias,
-        totalRounds: data.stats.totalRounds,
-        difficulty: difficulty?.label,
+        callsign: tag, netWorth: data.stats.finalNetWorth, archetype: data.archetype.title,
+        grade: data.archetype.grade, optimalRate: data.stats.optimalRate,
+        worstBias, totalRounds: data.stats.totalRounds, difficulty: s.difficulty?.label,
         date: new Date().toLocaleDateString(),
         notes: `DISCIPLINE:${data.stats.disciplineScore} CATASTROPHIC:${data.stats.catastrophicCount}`,
       }),
     }).catch(() => {});
 
-    setCallsignSaved(true);
+    st({ callsignSaved: true });
   };
 
   const progress = difficulty ? Math.min(100, (netWorth / difficulty.target) * 100) : 0;
@@ -742,66 +630,55 @@ export function useGameEngine() {
   // ─── LOBBY: CREATE SESSION (P1) ─────────────────────────────────────────────
   const createSession = async () => {
     const code = Math.random().toString(36).substring(2, 6).toUpperCase();
-    setSessionCode(code);
-    setPlayerNum(1);
+    st({ sessionCode: code, playerNum: 1 });
     await storeShared(SK.session(code), { host: true, created: Date.now(), p2ready: false });
-    setSessionPhase("WAITING_P2");
+    st({ sessionPhase: "WAITING_P2" });
   };
 
   // ─── LOBBY: JOIN SESSION (P2) ────────────────────────────────────────────────
-  const joinSession = async (lobbyCode, currentDifficulty) => {
-    const sess = await readShared(SK.session(lobbyCode));
-    if (!sess) { setLobbyError("Session not found"); return; }
-    setSessionCode(lobbyCode);
-    setPlayerNum(2);
-    await storeShared(SK.session(lobbyCode), { ...sess, p2ready: true });
-    setSessionPhase("BOTH_READY");
+  const joinSession = async (code, currentDifficulty) => {
+    const sess = await readShared(SK.session(code));
+    if (!sess) { st({ lobbyError: "Session not found" }); return; }
+    st({ sessionCode: code, playerNum: 2 });
+    await storeShared(SK.session(code), { ...sess, p2ready: true });
+    st({ sessionPhase: "BOTH_READY" });
     setTimeout(() => {
       const diff = currentDifficulty || DIFFICULTIES.BALANCED;
-      setDifficulty(diff);
-      setNetWorth(diff.startNetWorth);
-      setDna({ flags: new Set(diff.startingFlags), riskScore: 0, disciplineScore: 0 });
-      setRound(1);
-      setHistory([]); setBiasHistory([]); setCatHistory([]);
-      setMarketIdx(0); setPendingMarketShift(null); setMarketShiftRevealIdx(0);
-      setScenario(null); setChosen(null);
-      setScreen("GAME");
+      st({
+        difficulty: diff, netWorth: diff.startNetWorth,
+        dna: { flags: new Set(diff.startingFlags), riskScore: 0, disciplineScore: 0 },
+        round: 1, history: [], biasHistory: [], catHistory: [],
+        marketIdx: 0, pendingMarketShift: null, marketShiftRevealIdx: 0,
+        scenario: null, chosen: null, screen: "GAME",
+      });
     }, 3000);
   };
 
+  // ─── RESET GAME ─────────────────────────────────────────────────────────────
   const resetGame = () => {
     clearInterval(pollRef.current);
-    if (sessionCode) {
-      deleteShared(SK.session(sessionCode));
-      deleteShared(SK.round(sessionCode));
-      deleteShared(SK.p1Choice(sessionCode));
-      deleteShared(SK.p2Choice(sessionCode));
-      deleteShared(SK.p1Worth(sessionCode));
-      deleteShared(SK.p2Worth(sessionCode));
-      deleteShared(SK.disconnect(sessionCode));
+    const s = get();
+    if (s.sessionCode) {
+      deleteShared(SK.session(s.sessionCode));
+      deleteShared(SK.round(s.sessionCode));
+      deleteShared(SK.p1Choice(s.sessionCode));
+      deleteShared(SK.p2Choice(s.sessionCode));
+      deleteShared(SK.p1Worth(s.sessionCode));
+      deleteShared(SK.p2Worth(s.sessionCode));
+      deleteShared(SK.disconnect(s.sessionCode));
     }
-    setScreen("BOOT"); setBootText(""); setDifficulty(null);
-    setEndData(null); setCallsign(""); setCallsignSaved(false);
-    setSeedValue(""); setSeedMode(false); setCopied(false);
-    setPendingMarketShift(null); setMarketShiftRevealIdx(0);
-    setFlagDuration({}); setFiredRipples([]); setActiveRipple(null); setIsRippleScenario(false);
-    setDecisionTimes([]); setLastChoiceForcedByTimer(false); setTimeLeft(45); setTimerActive(false); setTimeExpired(false);
-    setCalibrationLog([]); setConfidenceRating(null); setPendingConfidence(false); setHoverConfidence(null);
-    setNarrationOn(false);
     if (typeof speechSynthesis !== "undefined") speechSynthesis.cancel();
-    setMultiMode(false); setSessionCode(""); setPlayerNum(1); setSessionPhase("LOBBY");
-    setP2NetWorth(0); setP2Choice(null); setP2Quality(null); setP2Outcome(null); setP2NetEffect(null);
-    setLobbyCode(""); setLobbyError("");
+    st({ ...initialState, apiKey: s.apiKey, soundOn: s.soundOn });
   };
 
+  // ─── RETURN API (same surface as before) ────────────────────────────────────
   return {
-    // State
-    screen, setScreen,
-    difficulty, setDifficulty,
-    apiKey, setApiKey,
-    netWorth, setNetWorth,
+    screen,         setScreen:         v  => st({ screen: v }),
+    difficulty,     setDifficulty:     v  => st({ difficulty: v }),
+    apiKey,         setApiKey:         v  => st({ apiKey: v }),
+    netWorth,       setNetWorth:       v  => st({ netWorth: v }),
     round,
-    dna, setDna,
+    dna,            setDna:            v  => st({ dna: v }),
     scenario,
     chosen,
     loading,
@@ -809,50 +686,50 @@ export function useGameEngine() {
     usedFallback,
     history,
     biasHistory,
-    marketIdx, setMarketIdx,
-    pendingMarketShift, setPendingMarketShift,
+    marketIdx,      setMarketIdx:      v  => st({ marketIdx: v }),
+    pendingMarketShift, setPendingMarketShift: v => st({ pendingMarketShift: v }),
     marketShiftRevealIdx,
     catHistory,
-    showBias, setShowBias,
+    showBias,       setShowBias:       v  => st({ showBias: v }),
     leaderboard,
     endData,
     bootText,
-    callsign, setCallsign,
+    callsign,       setCallsign:       v  => st({ callsign: v }),
     callsignSaved,
-    seedValue, setSeedValue,
-    seedMode, setSeedMode,
-    copied, setCopied,
+    seedValue,      setSeedValue:      v  => st({ seedValue: v }),
+    seedMode,       setSeedMode:       v  => st({ seedMode: v }),
+    copied,         setCopied:         v  => st({ copied: v }),
     flagDuration,
     firedRipples,
     activeRipple,
     isRippleScenario,
     rippleProgress,
-    pressureMode, setPressureMode,
+    pressureMode,   setPressureMode:   v  => st({ pressureMode: typeof v === 'function' ? v(get().pressureMode) : v }),
     timeLeft,
     timerActive,
     timeExpired,
     decisionTimes,
     lastChoiceForcedByTimer,
     pendingConfidence,
-    confidenceRating, setConfidenceRating,
-    hoverConfidence, setHoverConfidence,
+    confidenceRating, setConfidenceRating: v => st({ confidenceRating: v }),
+    hoverConfidence,  setHoverConfidence:  v => st({ hoverConfidence: v }),
     calibrationLog,
-    narrationOn, setNarrationOn,
-    soundOn, setSoundOn,
-    replayData, setReplayData,
-    analyzerError, setAnalyzerError,
-    roundLogOpen, setRoundLogOpen,
-    installPrompt,
-    multiMode, setMultiMode,
-    sessionCode, setSessionCode,
-    playerNum, setPlayerNum,
-    sessionPhase, setSessionPhase,
+    narrationOn,    setNarrationOn:    v  => st({ narrationOn: v }),
+    soundOn,        setSoundOn:        v  => st({ soundOn: typeof v === 'function' ? v(get().soundOn) : v }),
+    replayData,     setReplayData:     v  => st({ replayData: v }),
+    analyzerError,  setAnalyzerError:  v  => st({ analyzerError: v }),
+    roundLogOpen,   setRoundLogOpen:   v  => st({ roundLogOpen: v }),
+    installPrompt,  setInstallPrompt:  v  => st({ installPrompt: v }),
+    multiMode,      setMultiMode:      v  => st({ multiMode: v }),
+    sessionCode,    setSessionCode:    v  => st({ sessionCode: v }),
+    playerNum,      setPlayerNum:      v  => st({ playerNum: v }),
+    sessionPhase,   setSessionPhase:   v  => st({ sessionPhase: v }),
     p2NetWorth,
     p2Choice,
     p2Quality,
     p2Outcome,
     p2NetEffect,
-    lobbyCode, setLobbyCode,
+    lobbyCode,      setLobbyCode:      v  => st({ lobbyCode: v }),
     lobbyError,
     storageOk,
     spinFrame,
@@ -860,7 +737,7 @@ export function useGameEngine() {
     market,
     progress,
     SPIN_CHARS,
-    // Functions
+    // Handlers
     startGame,
     pick,
     confirmChoice,
@@ -871,7 +748,7 @@ export function useGameEngine() {
     resetGame,
     createSession,
     joinSession,
-    // Re-export for lobby inline handlers
+    // Re-exports for lobby inline handlers
     SK,
     storeShared,
     readShared,
