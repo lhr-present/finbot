@@ -29,9 +29,18 @@ jobs:
 
       - name: Check bundle size
         run: |
-          SIZE=$(du -k dist/assets/index-*.js | cut -f1)
-          echo "Bundle size: ${SIZE}KB"
-          if [ "$SIZE" -gt 500 ]; then
-            echo "ERROR: Bundle exceeds 500KB limit (${SIZE}KB)"
+          MAIN=$(du -k dist/assets/index-*.js | awk '{sum+=$1} END{print sum}')
+          echo "Main bundle: ${MAIN}KB (limit: 500KB)"
+          if [ "$MAIN" -gt 500 ]; then
+            echo "ERROR: Main bundle exceeds 500KB (${MAIN}KB)"
             exit 1
           fi
+
+          TOTAL=$(du -k dist/assets/*.js dist/assets/chunks/*.js 2>/dev/null | awk '{sum+=$1} END{print sum}')
+          echo "Total JS: ${TOTAL}KB (limit: 1000KB)"
+          if [ "$TOTAL" -gt 1000 ]; then
+            echo "ERROR: Total JS exceeds 1000KB (${TOTAL}KB)"
+            exit 1
+          fi
+
+          echo "Bundle OK — main ${MAIN}KB, total ${TOTAL}KB"

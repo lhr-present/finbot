@@ -13,7 +13,7 @@
 // P-01: Architecture split — render layer only. Engine in src/engine/, hook in src/hooks/
 // Run: cd ~/projects/finbot && npm run dev
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, memo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useGameEngine } from "./hooks/useGameEngine.js";
 import { sfx } from "./engine/sounds.js";
@@ -31,7 +31,7 @@ const slideIn  = { initial: { opacity: 0, x: -20 }, animate: { opacity: 1, x: 0 
 
 // ─── B-03: MARKET SHIFT COUNTDOWN BAR ────────────────────────────────────────
 
-function MarketShiftCountdownBar({ duration = 3000, color = "#00ff88" }) {
+const MarketShiftCountdownBar = memo(function MarketShiftCountdownBar({ duration = 3000, color = "#00ff88" }) {
   const rafRef = useRef(null);
   const startRef = useRef(null);
   const [pct, setPct] = useState(0);
@@ -51,11 +51,11 @@ function MarketShiftCountdownBar({ duration = 3000, color = "#00ff88" }) {
       <div style={{ height: "100%", width: `${pct}%`, background: color, boxShadow: `0 0 6px ${color}`, transition: "none" }} />
     </div>
   );
-}
+});
 
 // ─── FEATURE 3: TIMER BAR COMPONENT ──────────────────────────────────────────
 
-function TimerBar({ timeLeft, total = 45 }) {
+const TimerBar = memo(function TimerBar({ timeLeft, total = 45 }) {
   const pct = (timeLeft / total) * 100;
   const color = timeLeft > 20 ? "#00ff88" : timeLeft > 10 ? "#ffaa00" : "#ff2222";
   return (
@@ -69,7 +69,7 @@ function TimerBar({ timeLeft, total = 45 }) {
       </div>
     </div>
   );
-}
+});
 
 // ─── MAIN COMPONENT (render layer only) ──────────────────────────────────────
 
