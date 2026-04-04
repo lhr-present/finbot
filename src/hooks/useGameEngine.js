@@ -27,7 +27,7 @@ export function useGameEngine() {
     screen, difficulty, apiKey, netWorth, round, dna, scenario, chosen, loading,
     apiError, usedFallback, history, biasHistory, marketIdx, pendingMarketShift,
     marketShiftRevealIdx, catHistory, showBias, leaderboard, endData, bootText,
-    callsign, callsignSaved, seedValue, seedMode, copied,
+    callsign, callsignSaved, seedValue, seedMode, shareableSeed, copied,
     flagDuration, firedRipples, activeRipple, isRippleScenario, rippleProgress,
     pressureMode, timeLeft, timerActive, timeExpired, decisionTimes, lastChoiceForcedByTimer,
     pendingConfidence, confidenceRating, hoverConfidence, calibrationLog,
@@ -554,7 +554,10 @@ export function useGameEngine() {
         if (!isSupabaseEnabled()) st({ leaderboard: top });
       } catch {}
 
-      st({ endData: { stats: finalStats, archetype: arc, history: newHistory, finalNetWorth: newWorth, p2FinalNetWorth: s.p2NetWorth } });
+      st({
+        endData: { stats: finalStats, archetype: arc, history: newHistory, finalNetWorth: newWorth, p2FinalNetWorth: s.p2NetWorth },
+        shareableSeed: s.seedValue || Math.random().toString(36).substring(2, 8),
+      });
       if (['S', 'A'].includes(arc.grade)) sfx.win();
       else sfx.lose();
       plausible('game_end', { grade: arc.grade, archetype: arc.title, difficulty: s.difficulty.label });
@@ -785,6 +788,7 @@ export function useGameEngine() {
     callsignSaved,
     seedValue,      setSeedValue:      v  => st({ seedValue: v }),
     seedMode,       setSeedMode:       v  => st({ seedMode: v }),
+    shareableSeed,
     copied,         setCopied:         v  => st({ copied: v }),
     flagDuration,
     firedRipples,

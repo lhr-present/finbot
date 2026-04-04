@@ -98,6 +98,7 @@ export default function FINBOT9000() {
     callsignSaved,
     seedValue, setSeedValue,
     seedMode, setSeedMode,
+    shareableSeed,
     copied, setCopied,
     firedRipples,
     activeRipple,
@@ -905,7 +906,6 @@ export default function FINBOT9000() {
       ? stats.finalNetWorth > p2NetWorth ? "VICTORY" : stats.finalNetWorth === p2NetWorth ? "DRAW" : "DEFEAT"
       : null;
 
-    const shareableSeed = seedValue || Math.random().toString(36).substring(2, 8);
 
     const ending = resolveEnding([...dna.flags], stats.finalNetWorth, stats.disciplineScore, h);
     const isDefault = ending.id === 'DEFAULT';

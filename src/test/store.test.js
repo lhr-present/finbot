@@ -63,6 +63,7 @@ describe('initialState', () => {
     expect(initialState.bootText).toBe('');
     expect(initialState.callsign).toBe('');
     expect(initialState.seedValue).toBe('');
+    expect(initialState.shareableSeed).toBe('');
     expect(initialState.sessionCode).toBe('');
     expect(initialState.sessionPhase).toBe('LOBBY');
     expect(initialState.lobbyCode).toBe('');

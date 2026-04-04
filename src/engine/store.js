@@ -33,6 +33,7 @@ export const initialState = {
   // Seed
   seedValue:            "",
   seedMode:             false,
+  shareableSeed:        "",
   copied:               false,
   // Ripple Events
   flagDuration:         {},
