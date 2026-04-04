@@ -12,6 +12,7 @@ import { callClaude, parseScenarioJSON, buildPrompt } from "../engine/scenarios.
 import { computeArchetype, resolveEnding } from "../engine/stateMachine.js";
 import { sfx, setSoundMuted } from "../engine/sounds.js";
 import { useGameStore, st, stf, get, initialState } from "../engine/store.js";
+import { isSupabaseEnabled, postScore, fetchGlobalTop10, fetchTop10ByDifficulty } from "../engine/supabase.js";
 
 // P-07: Plausible custom event helper (no-ops if analytics not loaded)
 const plausible = (name, props) => {
@@ -87,7 +88,12 @@ export function useGameEngine() {
 
   // ─── LOAD LEADERBOARD ───────────────────────────────────────────────────────
   useEffect(() => {
+    // Always seed from localStorage first for instant display
     try { st({ leaderboard: JSON.parse(localStorage.getItem("finbot_lb") || "[]") }); } catch {}
+    // Then upgrade with global Supabase data if available
+    if (isSupabaseEnabled()) {
+      fetchGlobalTop10().then(rows => { if (rows) st({ leaderboard: rows }); }).catch(() => {});
+    }
   }, []);
 
   // ─── CHECK STORAGE AVAILABILITY ─────────────────────────────────────────────
@@ -531,13 +537,20 @@ export function useGameEngine() {
 
       const arc = computeArchetype(finalStats);
 
+      // Post to Supabase (fire-and-forget) + localStorage fallback
+      if (isSupabaseEnabled()) {
+        postScore({ netWorth: newWorth, archetype: arc.title, grade: arc.grade, difficulty: s.difficulty.label, optimalRate: finalStats.optimalRate })
+          .then(() => fetchTop10ByDifficulty(s.difficulty.label))
+          .then(rows => { if (rows) st({ leaderboard: rows }); })
+          .catch(() => {});
+      }
       try {
         const lb = JSON.parse(localStorage.getItem("finbot_lb") || "[]");
         lb.push({ netWorth: newWorth, archetype: arc.title, grade: arc.grade, diff: s.difficulty.label, date: new Date().toLocaleDateString() });
         lb.sort((a, b) => b.netWorth - a.netWorth);
         const top = lb.slice(0, 10);
         localStorage.setItem("finbot_lb", JSON.stringify(top));
-        st({ leaderboard: top });
+        if (!isSupabaseEnabled()) st({ leaderboard: top });
       } catch {}
 
       st({ endData: { stats: finalStats, archetype: arc, history: newHistory, finalNetWorth: newWorth, p2FinalNetWorth: s.p2NetWorth } });
@@ -584,6 +597,16 @@ export function useGameEngine() {
   const saveCallsign = (data) => {
     const s = get();
     const tag = s.callsign.trim().toUpperCase().slice(0, 3) || "---";
+
+    // Post updated score with callsign to Supabase
+    if (isSupabaseEnabled()) {
+      postScore({ callsign: tag, netWorth: data.stats.finalNetWorth, archetype: data.archetype.title,
+        grade: data.archetype.grade, difficulty: s.difficulty?.label, optimalRate: data.stats.optimalRate })
+        .then(() => fetchTop10ByDifficulty(s.difficulty?.label))
+        .then(rows => { if (rows) st({ leaderboard: rows }); })
+        .catch(() => {});
+    }
+
     try {
       const lb = JSON.parse(localStorage.getItem("finbot_lb") || "[]");
       const filtered = lb.filter(e => e.callsign !== tag);
@@ -595,7 +618,7 @@ export function useGameEngine() {
       filtered.sort((a, b) => b.netWorth - a.netWorth);
       const top = filtered.slice(0, 10);
       localStorage.setItem("finbot_lb", JSON.stringify(top));
-      st({ leaderboard: top });
+      if (!isSupabaseEnabled()) st({ leaderboard: top });
     } catch {}
 
     const worstBias = Object.entries(

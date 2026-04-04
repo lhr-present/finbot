@@ -34,6 +34,15 @@ export default defineConfig({
     }),
   ],
   server: { port: 3000, open: true },
+  build: {
+    rollupOptions: {
+      output: {
+        // Dynamic chunks (e.g. lazy Supabase SDK) go into assets/chunks/
+        // so CI can check assets/index-*.js (main bundle) separately
+        chunkFileNames: 'assets/chunks/[name]-[hash].js',
+      },
+    },
+  },
   test: {
     environment: "node",
     globals: true,
