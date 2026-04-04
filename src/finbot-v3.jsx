@@ -1050,7 +1050,7 @@ export default function FINBOT9000() {
                 <div style={{ fontSize: 10, color: "#333", letterSpacing: 3, marginBottom: 14 }}>// CONFIDENCE CALIBRATION</div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 16 }}>
                   {[
-                    { l: "AVG CONFIDENCE", v: avgConf ? `${avgConf}/5` : "—", c: avgConf >= 4 ? "#ffaa00" : "#aaa" },
+                    { l: "AVG CONFIDENCE", v: avgConf ? `${avgConf}/5` : "—", c: parseFloat(avgConf) >= 4 ? "#ffaa00" : "#aaa" },
                     { l: "CALIBRATION SCORE", v: calibScore !== null ? `${calibScore}%` : "—", c: calibScore >= 70 ? "#00ff88" : calibScore >= 40 ? "#ffaa00" : "#ff4444" },
                     { l: "OVERCONFIDENT", v: overconfCount, c: overconfCount > 0 ? "#ff4444" : "#00ff88" },
                   ].map((s) => (
