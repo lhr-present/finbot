@@ -3,6 +3,7 @@
 // returns the same API surface as before — render layer is unchanged.
 
 import { useEffect, useRef, useCallback } from "react";
+import { useShallow } from "zustand/shallow";
 import {
   DIFFICULTIES, MARKET_CONDITIONS, CATEGORIES, RIPPLE_TRIGGERS,
   QUALITY_META, FALLBACKS, SPIN_CHARS,
@@ -21,7 +22,7 @@ const plausible = (name, props) => {
 
 export function useGameEngine() {
 
-  // ─── SUBSCRIBE TO STORE ─────────────────────────────────────────────────────
+  // ─── SUBSCRIBE TO STORE (useShallow prevents re-renders on unrelated changes) ─
   const {
     screen, difficulty, apiKey, netWorth, round, dna, scenario, chosen, loading,
     apiError, usedFallback, history, biasHistory, marketIdx, pendingMarketShift,
@@ -34,7 +35,7 @@ export function useGameEngine() {
     multiMode, sessionCode, playerNum, sessionPhase,
     p2NetWorth, p2Choice, p2Quality, p2Outcome, p2NetEffect,
     lobbyCode, lobbyError, storageOk, spinFrame,
-  } = useGameStore();
+  } = useGameStore(useShallow(s => s));
 
   // ─── REFS (must stay in React hook) ─────────────────────────────────────────
   const confirmChoiceRef      = useRef(null);
@@ -693,6 +694,69 @@ export function useGameEngine() {
     if (typeof speechSynthesis !== "undefined") speechSynthesis.cancel();
     st({ ...initialState, apiKey: s.apiKey, soundOn: s.soundOn });
   };
+
+  // ─── KEYBOARD SHORTCUTS ─────────────────────────────────────────────────────
+  useEffect(() => {
+    const handler = (e) => {
+      // Ignore when typing in an input/textarea
+      if (['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
+
+      const s = get();
+
+      // GAME screen shortcuts
+      if (s.screen === 'GAME' && s.scenario && !s.loading) {
+        const choices = s.scenario.choices || [];
+
+        // A / 1  →  pick choice 0
+        // B / 2  →  pick choice 1
+        // C / 3  →  pick choice 2
+        const idx = { a: 0, '1': 0, b: 1, '2': 1, c: 2, '3': 2 }[e.key.toLowerCase()];
+        if (idx !== undefined && !s.chosen && choices[idx]) {
+          e.preventDefault();
+          pick(choices[idx]);
+          return;
+        }
+
+        // Enter → confirm (when confidence meter showing, submit mid-rating or current)
+        if (e.key === 'Enter' && s.chosen && s.pendingConfidence) {
+          e.preventDefault();
+          const rating = s.confidenceRating || 3;
+          st({ confidenceRating: rating });
+          confirmChoice(null, false, rating);
+          return;
+        }
+
+        // Enter → next round confirm (when reveal is shown)
+        if (e.key === 'Enter' && s.chosen && !s.pendingConfidence && !s.multiMode) {
+          e.preventDefault();
+          confirmChoice();
+          return;
+        }
+      }
+
+      // RIPPLE / MARKET_SHIFT — Space or Enter to proceed
+      if ((e.key === ' ' || e.key === 'Enter') && s.screen === 'RIPPLE') {
+        e.preventDefault();
+        if (proceedFromRippleRef.current) proceedFromRippleRef.current();
+        return;
+      }
+      if ((e.key === ' ' || e.key === 'Enter') && s.screen === 'MARKET_SHIFT') {
+        e.preventDefault();
+        if (handleMarketShiftRef.current) handleMarketShiftRef.current();
+        return;
+      }
+
+      // M → toggle sound (anywhere)
+      if (e.key.toLowerCase() === 'm' && s.screen !== 'BOOT') {
+        e.preventDefault();
+        st({ soundOn: !s.soundOn });
+        return;
+      }
+    };
+
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── RETURN API (same surface as before) ────────────────────────────────────
   return {
