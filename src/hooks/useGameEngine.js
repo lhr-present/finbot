@@ -437,7 +437,7 @@ export function useGameEngine() {
 
     if (c.biasWarning) stf(prev => ({ biasHistory: [...prev.biasHistory, { round: s.round, bias: c.biasWarning, quality: c.quality }] }));
 
-    const entry = { round: s.round, category: s.scenario.category, title: s.scenario.title, choice: c, netEffect: c.netEffect, netWorthAfter: newWorth, market: s.market?.id || market.id };
+    const entry = { round: s.round, category: s.scenario.category, title: s.scenario.title, choice: c, netEffect: c.netEffect, netWorthAfter: newWorth, market: MARKET_CONDITIONS[s.marketIdx]?.id || market.id };
     const newHistory = [...s.history, entry];
 
     st({ history: newHistory, netWorth: newWorth, dna: newDna });
