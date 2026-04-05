@@ -1,6 +1,7 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
+import { visualizer } from "rollup-plugin-visualizer";
 
 
 export default defineConfig({
@@ -41,10 +42,21 @@ export default defineConfig({
         // so CI can check assets/index-*.js (main bundle) separately
         chunkFileNames: 'assets/chunks/[name]-[hash].js',
       },
+      plugins: [
+        // Bundle treemap — only opens in browser during explicit analysis runs
+        // Run: ANALYZE=true npm run build
+        process.env.ANALYZE && visualizer({ open: true, filename: 'dist/bundle-stats.html', gzipSize: true }),
+      ].filter(Boolean),
     },
   },
   test: {
     environment: "node",
     globals: true,
+    coverage: {
+      provider: "v8",
+      reporter: ["text", "lcov"],
+      include: ["src/engine/**"],
+      exclude: ["src/engine/sounds.js"],  // Web Audio — Node can't cover it meaningfully
+    },
   },
 });

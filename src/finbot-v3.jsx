@@ -24,6 +24,7 @@ import {
 } from "./engine/constants.js";
 import { resolveEnding } from "./engine/stateMachine.js";
 import { ACHIEVEMENTS } from "./engine/reinforcement.js";
+import confetti from "canvas-confetti";
 
 // ─── ANIMATION PRESETS ────────────────────────────────────────────────────────
 const fadeUp   = { initial: { opacity: 0, y: 18 }, animate: { opacity: 1, y: 0 }, exit: { opacity: 0, y: -12 }, transition: { duration: 0.25 } };
@@ -151,6 +152,22 @@ export default function FINBOT9000() {
     createSession,
     joinSession,
   } = useGameEngine();
+
+  // ─── Confetti burst when achievements unlock ──────────────────────────────
+  useEffect(() => {
+    if (screen !== "END" || newAchievements.length === 0) return;
+    const burst = (angle, origin) => confetti({
+      particleCount: 40,
+      angle,
+      spread: 55,
+      origin,
+      colors: ["#00ff88", "#00e5ff", "#ffaa00", "#aa88ff"],
+      scalar: 0.9,
+      gravity: 1.2,
+    });
+    burst(60,  { x: 0, y: 0.65 });
+    burst(120, { x: 1, y: 0.65 });
+  }, [screen, newAchievements.length]);
 
   // ─── BOOT ───────────────────────────────────────────────────────────────────
   if (screen === "BOOT") return (

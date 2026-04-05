@@ -6,25 +6,38 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "analyze": "ANALYZE=true vite build",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:ui": "vitest --ui"
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest run --coverage",
+    "lint": "eslint src/",
+    "lint:fix": "eslint src/ --fix"
   },
   "dependencies": {
+    "@sentry/react": "^10.47.0",
     "@supabase/supabase-js": "^2.101.1",
+    "canvas-confetti": "^1.9.4",
     "framer-motion": "^12.38.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "zustand": "^5.0.12"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
     "@vitejs/plugin-react": "^4.3.1",
+    "@vitest/coverage-v8": "^4.1.2",
     "@vitest/ui": "^2.1.9",
+    "eslint": "^9.39.4",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "globals": "^17.4.0",
     "jsdom": "^29.0.1",
+    "rollup-plugin-visualizer": "^7.0.1",
     "vite": "^5.4.8",
     "vite-plugin-pwa": "^1.2.0",
     "vitest": "^2.1.9"
