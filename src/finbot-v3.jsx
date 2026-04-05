@@ -25,6 +25,7 @@ import {
 import { resolveEnding } from "./engine/stateMachine.js";
 import { ACHIEVEMENTS } from "./engine/reinforcement.js";
 import confetti from "canvas-confetti";
+import BiasDNACard from "./components/BiasDNACard.jsx";
 
 // ─── ANIMATION PRESETS ────────────────────────────────────────────────────────
 const fadeUp   = { initial: { opacity: 0, y: 18 }, animate: { opacity: 1, y: 0 }, exit: { opacity: 0, y: -12 }, transition: { duration: 0.25 } };
@@ -1220,6 +1221,15 @@ export default function FINBOT9000() {
                 )}
               </div>
             )}
+
+            {/* Bias DNA Card */}
+            <BiasDNACard
+              biasHistory={biasHistory}
+              archGrade={archetype?.grade}
+              finalNetWorth={stats.finalNetWorth}
+              startNetWorth={difficulty?.startNetWorth || 0}
+              difficulty={difficulty?.label}
+            />
 
             {/* Feature B: Calibration Blind Spot Report */}
             {calibrationLog.length > 0 && overconfCount >= 3 && calibScore !== null && calibScore < 40 && (() => {
