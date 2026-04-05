@@ -528,6 +528,7 @@ export function useGameEngine() {
         finalNetWorth: newWorth,
         target: s.difficulty.target,
         optimalRate,
+        optimal: newHistory.filter(h => h.choice.quality === 'OPTIMAL').length,
         catastrophicCount,
         disciplineScore: newDna.disciplineScore,
         highRiskChoices,
