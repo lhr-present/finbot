@@ -2,7 +2,7 @@
 // Catches render/effect crashes and shows a recovery UI instead of blank screen.
 
 import { Component } from "react";
-import { st, initialState } from "./engine/store.js";
+import { st, get, initialState } from "./engine/store.js";
 
 export class ErrorBoundary extends Component {
   constructor(props) {
@@ -20,10 +20,12 @@ export class ErrorBoundary extends Component {
   }
 
   handleReset = () => {
-    // Reset Zustand store to initial state, then clear the error
+    // Reset Zustand store to initial state, preserving user preferences and progress
     try {
-      const { apiKey, soundOn } = { ...initialState };
-      st({ ...initialState, apiKey, soundOn });
+      const s = get();
+      st({ ...initialState, apiKey: s.apiKey || "", soundOn: s.soundOn ?? true,
+           achievements: s.achievements || [], streak: s.streak || 0,
+           personalBests: s.personalBests || {} });
     } catch {}
     this.setState({ error: null });
   };

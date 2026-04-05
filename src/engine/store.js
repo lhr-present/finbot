@@ -60,6 +60,12 @@ export const initialState = {
   analyzerError:        "",
   roundLogOpen:         false,
   installPrompt:        null,
+  // Reinforcement loop (persisted in localStorage, preserved across resets)
+  achievements:         [],
+  newAchievements:      [],
+  streak:               0,
+  personalBests:        {},
+  dailyDone:            false,
   // Multiplayer
   multiMode:            false,
   sessionCode:          "",

@@ -14,6 +14,11 @@ import { computeArchetype, resolveEnding } from "../engine/stateMachine.js";
 import { sfx, setSoundMuted } from "../engine/sounds.js";
 import { useGameStore, st, stf, get, initialState } from "../engine/store.js";
 import { isSupabaseEnabled, postScore, fetchGlobalTop10, fetchTop10ByDifficulty } from "../engine/supabase.js";
+import {
+  checkNewAchievements, loadAchievements, saveAchievements,
+  loadStreak, incrementStreak, loadPersonalBests, updatePersonalBest,
+  isDailyDone, markDailyDone, getDailySeed, getDailyKey,
+} from "../engine/reinforcement.js";
 
 // P-07: Plausible custom event helper (no-ops if analytics not loaded)
 const plausible = (name, props) => {
@@ -35,6 +40,7 @@ export function useGameEngine() {
     multiMode, sessionCode, playerNum, sessionPhase,
     p2NetWorth, p2Choice, p2Quality, p2Outcome, p2NetEffect,
     lobbyCode, lobbyError, storageOk, spinFrame,
+    achievements, newAchievements, streak, personalBests, dailyDone,
   } = useGameStore(useShallow(s => s));
 
   // ─── REFS (must stay in React hook) ─────────────────────────────────────────
@@ -58,6 +64,16 @@ export function useGameEngine() {
       const s = params.get("seed");
       if (s) st({ seedValue: s, seedMode: true });
     } catch {}
+  }, []);
+
+  // ─── ON MOUNT: load reinforcement loop data from localStorage ───────────────
+  useEffect(() => {
+    st({
+      achievements:  loadAchievements(),
+      streak:        loadStreak(),
+      personalBests: loadPersonalBests(),
+      dailyDone:     isDailyDone(),
+    });
   }, []);
 
   // ─── SPINNER ────────────────────────────────────────────────────────────────
@@ -555,7 +571,33 @@ export function useGameEngine() {
         if (!isSupabaseEnabled()) st({ leaderboard: top });
       } catch {}
 
+      // ── Reinforcement loop ──────────────────────────────────────────────────
+      const prevAchievements = s.achievements || [];
+      const endingObj = resolveEnding([...newDna.flags], newWorth, newDna.disciplineScore, newHistory);
+      const newlyUnlocked = checkNewAchievements(prevAchievements, {
+        stats: finalStats,
+        archGrade: arc.grade,
+        history: newHistory,
+        endingId: endingObj.id,
+        pressureMode: s.pressureMode,
+      });
+      const allAchievements = [...prevAchievements, ...newlyUnlocked];
+      saveAchievements(allAchievements);
+
+      const newStreak = incrementStreak();
+      const updatedBests = updatePersonalBest(s.personalBests || {}, s.difficulty.label, newWorth, arc.grade);
+
+      // Mark daily challenge complete if seed matches today's seed
+      const dailySeed = getDailySeed();
+      const wasDailyRun = s.seedValue === dailySeed;
+      if (wasDailyRun) markDailyDone(arc.grade, newWorth);
+
       st({
+        achievements:    allAchievements,
+        newAchievements: newlyUnlocked,
+        streak:          newStreak,
+        personalBests:   updatedBests,
+        dailyDone:       wasDailyRun ? true : s.dailyDone,
         endData: { stats: finalStats, archetype: arc, history: newHistory, finalNetWorth: newWorth, p2FinalNetWorth: s.p2NetWorth },
         shareableSeed: s.seedValue || Math.random().toString(36).substring(2, 8),
       });
@@ -696,7 +738,15 @@ export function useGameEngine() {
       deleteShared(SK.disconnect(s.sessionCode));
     }
     if (typeof speechSynthesis !== "undefined") speechSynthesis.cancel();
-    st({ ...initialState, apiKey: s.apiKey, soundOn: s.soundOn });
+    st({
+      ...initialState,
+      apiKey:        s.apiKey,
+      soundOn:       s.soundOn,
+      achievements:  s.achievements,
+      streak:        s.streak,
+      personalBests: s.personalBests,
+      dailyDone:     isDailyDone(),
+    });
   };
 
   // ─── KEYBOARD SHORTCUTS ─────────────────────────────────────────────────────
@@ -840,6 +890,14 @@ export function useGameEngine() {
     resetGame,
     createSession,
     joinSession,
+    // Reinforcement loop
+    achievements,
+    newAchievements,
+    streak,
+    personalBests,
+    dailyDone,
+    getDailySeed,
+    getDailyKey,
     // Re-exports for lobby inline handlers
     SK,
     storeShared,

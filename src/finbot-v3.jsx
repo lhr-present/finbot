@@ -23,6 +23,7 @@ import {
   fmt, qualityColor, css, SPIN_CHARS,
 } from "./engine/constants.js";
 import { resolveEnding } from "./engine/stateMachine.js";
+import { ACHIEVEMENTS } from "./engine/reinforcement.js";
 
 // ─── ANIMATION PRESETS ────────────────────────────────────────────────────────
 const fadeUp   = { initial: { opacity: 0, y: 18 }, animate: { opacity: 1, y: 0 }, exit: { opacity: 0, y: -12 }, transition: { duration: 0.25 } };
@@ -133,6 +134,12 @@ export default function FINBOT9000() {
     spinFrame,
     market,
     progress,
+    achievements,
+    newAchievements,
+    streak,
+    personalBests,
+    dailyDone,
+    getDailySeed,
     startGame,
     pick,
     confirmChoice,
@@ -214,6 +221,14 @@ export default function FINBOT9000() {
                 <button onClick={() => startGame(difficulty, apiKey)} style={css.btn(difficulty.color)}>
                   BOOT SYSTEM ▶
                 </button>
+                <button onClick={() => {
+                  const seed = getDailySeed();
+                  setSeedValue(seed); setSeedMode(true);
+                  startGame(difficulty, apiKey);
+                }} style={{ ...css.btn(dailyDone ? "#333" : "#ffaa00"), position: "relative" }}
+                  title={dailyDone ? "Today's challenge completed" : "Same seed for all players today"}>
+                  {dailyDone ? "DAILY ✓" : "DAILY ▶"}
+                </button>
                 <button onClick={() => { setMultiMode(true); setScreen("LOBBY"); }} style={css.btn("#00e5ff")}>
                   MULTIPLAYER ▶
                 </button>
@@ -235,6 +250,65 @@ export default function FINBOT9000() {
                 </div>
               )}
             </>)}
+
+            {/* ── Reinforcement loop panel ── */}
+            {(streak > 0 || achievements.length > 0 || Object.keys(personalBests).length > 0) && (
+              <div style={{ marginTop: 44, maxWidth: 560, margin: "44px auto 0", textAlign: "left" }}>
+
+                {/* Streak + achievement count row */}
+                <div style={{ display: "flex", gap: 20, alignItems: "center", marginBottom: 18, flexWrap: "wrap" }}>
+                  {streak > 0 && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ fontSize: 16, color: streak >= 7 ? "#ffaa00" : "#555" }}>▶</span>
+                      <span style={{ fontSize: 11, color: streak >= 7 ? "#ffaa00" : "#888", letterSpacing: 2 }}>
+                        {streak} DAY STREAK
+                      </span>
+                    </div>
+                  )}
+                  {achievements.length > 0 && (
+                    <span style={{ fontSize: 10, color: "#333", letterSpacing: 2 }}>
+                      ACHIEVEMENTS [{achievements.length}/{ACHIEVEMENTS.length}]
+                    </span>
+                  )}
+                </div>
+
+                {/* Achievement shelf */}
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 20 }}>
+                  {ACHIEVEMENTS.map(a => {
+                    const unlocked = achievements.includes(a.id);
+                    return (
+                      <div key={a.id} title={`${a.label}: ${a.desc}`} style={{
+                        width: 42, height: 42, background: unlocked ? "#0d1a0d" : "#0a0a0a",
+                        border: `1px solid ${unlocked ? "#00ff8844" : "#1a1a1a"}`,
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        fontSize: 18, cursor: "help",
+                        color: unlocked ? "#00ff88" : "#1e1e1e",
+                        transition: "all 0.2s",
+                      }}>
+                        {a.icon}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Personal Bests */}
+                {Object.keys(personalBests).length > 0 && (
+                  <div>
+                    <div style={{ fontSize: 10, color: "#222", letterSpacing: 3, marginBottom: 8 }}>// PERSONAL BESTS</div>
+                    {Object.entries(personalBests).map(([diff, pb]) => (
+                      <div key={diff} style={{ display: "flex", gap: 10, fontSize: 10, padding: "3px 0", alignItems: "center" }}>
+                        <span style={{ color: "#333", minWidth: 120, letterSpacing: 1 }}>{diff}</span>
+                        <div style={{ flex: 1, height: 3, background: "#111" }}>
+                          <div style={{ height: "100%", width: `${Math.min(100, (pb.netWorth / 1000000) * 100)}%`, background: "#00ff8844" }} />
+                        </div>
+                        <span style={{ color: "#00ff88", minWidth: 80, textAlign: "right" }}>{fmt(pb.netWorth)}</span>
+                        <span style={{ color: "#444", minWidth: 28 }}>[{pb.grade}]</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             {leaderboard.length > 0 && (
               <div style={{ marginTop: 44, maxWidth: 560, margin: "44px auto 0", textAlign: "left" }}>
@@ -1025,6 +1099,47 @@ export default function FINBOT9000() {
                 </div>
                 <div style={{ fontSize: 13, color: '#777', maxWidth: 520, margin: '0 auto 40px', lineHeight: 1.9 }}>{archetype.desc}</div>
               </>
+            )}
+
+            {/* Achievement unlocks */}
+            {newAchievements.length > 0 && (
+              <div style={{ maxWidth: 620, margin: "0 auto 32px" }}>
+                <div style={{ fontSize: 10, color: "#ffaa00", letterSpacing: 4, marginBottom: 14 }}>
+                  ⬡ ACHIEVEMENT{newAchievements.length > 1 ? "S" : ""} UNLOCKED
+                </div>
+                <div style={{ display: "flex", gap: 12, flexWrap: "wrap", justifyContent: "center" }}>
+                  {newAchievements.map(id => {
+                    const a = ACHIEVEMENTS.find(x => x.id === id);
+                    if (!a) return null;
+                    return (
+                      <motion.div key={id}
+                        initial={{ scale: 0, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        transition={{ type: "spring", stiffness: 260, damping: 20 }}
+                        style={{ background: "#0d1a0d", border: "1px solid #00ff8866", padding: "14px 20px", textAlign: "center", minWidth: 140 }}>
+                        <div style={{ fontSize: 28, color: "#00ff88", marginBottom: 6 }}>{a.icon}</div>
+                        <div style={{ fontSize: 10, color: "#00ff88", letterSpacing: 2, marginBottom: 4 }}>{a.label}</div>
+                        <div style={{ fontSize: 9, color: "#444", lineHeight: 1.5 }}>{a.desc}</div>
+                      </motion.div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Streak + personal best update */}
+            {streak > 0 && (
+              <div style={{ maxWidth: 620, margin: "0 auto 24px", display: "flex", gap: 20, justifyContent: "center", alignItems: "center", flexWrap: "wrap" }}>
+                <div style={{ fontSize: 11, color: streak >= 7 ? "#ffaa00" : "#444", letterSpacing: 2 }}>
+                  ▶ {streak} DAY STREAK
+                </div>
+                {personalBests[difficulty?.label] && (
+                  <div style={{ fontSize: 10, color: "#333", letterSpacing: 1 }}>
+                    BEST: <span style={{ color: "#00ff88" }}>{fmt(personalBests[difficulty?.label].netWorth)}</span>
+                    {" "}[{personalBests[difficulty?.label].grade}]
+                  </div>
+                )}
+              </div>
             )}
 
             {/* Stats Grid */}
