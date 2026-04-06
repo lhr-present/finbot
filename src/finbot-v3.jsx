@@ -152,6 +152,10 @@ export default function FINBOT9000() {
     resetGame,
     createSession,
     joinSession,
+    lbFilter, setLbFilter,
+    playerRank,
+    beatNotice, clearBeatNotice,
+    showLb, setShowLb,
   } = useGameEngine();
 
   // ─── Confetti burst when achievements unlock ──────────────────────────────
@@ -250,6 +254,9 @@ export default function FINBOT9000() {
                 <button onClick={() => { setMultiMode(true); setScreen("LOBBY"); }} style={css.btn("#00e5ff")}>
                   MULTIPLAYER ▶
                 </button>
+                <button onClick={() => setShowLb(true)} style={css.btn("#aa88ff")}>
+                  LEADERBOARD ▶
+                </button>
                 <button onClick={() => setScreen("ANALYZER")} style={css.btn("#888")}>
                   ANALYZE REPLAY ▶
                 </button>
@@ -345,6 +352,60 @@ export default function FINBOT9000() {
           </>)}
         </div>
       </motion.div>
+
+      {/* ── Leaderboard Modal ── */}
+      <AnimatePresence>
+        {showLb && (
+          <motion.div
+            key="lb-modal"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.92)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}
+            onClick={e => { if (e.target === e.currentTarget) setShowLb(false); }}
+          >
+            <motion.div
+              initial={{ scale: 0.94, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.94, y: 20 }}
+              style={{ background: "#050505", border: "1px solid #1a1a1a", padding: "28px 24px", maxWidth: 620, width: "100%", maxHeight: "80vh", overflowY: "auto" }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+                <div style={{ fontSize: 10, color: "#aa88ff", letterSpacing: 4 }}>// GLOBAL LEADERBOARD</div>
+                <button onClick={() => setShowLb(false)} style={{ background: "none", border: "none", color: "#333", cursor: "pointer", fontFamily: "monospace", fontSize: 16 }}>✕</button>
+              </div>
+
+              {/* Filter buttons */}
+              <div style={{ display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap" }}>
+                {['ALL', 'DAILY', 'CONSERVATIVE', 'BALANCED', 'AGGRESSIVE'].map(f => (
+                  <button key={f} onClick={() => setLbFilter(f)}
+                    style={{ background: lbFilter === f ? "#aa88ff22" : "none", border: `1px solid ${lbFilter === f ? "#aa88ff" : "#222"}`, color: lbFilter === f ? "#aa88ff" : "#444", fontFamily: "monospace", fontSize: 9, letterSpacing: 2, padding: "4px 12px", cursor: "pointer" }}>
+                    {f}
+                  </button>
+                ))}
+              </div>
+
+              {/* Rows */}
+              {leaderboard.length === 0 ? (
+                <div style={{ fontSize: 10, color: "#333", textAlign: "center", padding: "40px 0" }}>
+                  {isSupabaseEnabled ? "LOADING..." : "NO LEADERBOARD — Supabase not configured"}
+                </div>
+              ) : (
+                leaderboard.map((e, i) => (
+                  <div key={e.id || i} style={{ display: "flex", gap: 10, fontSize: 11, borderBottom: "1px solid #0f0f0f", padding: "7px 0", alignItems: "center" }}>
+                    <span style={{ color: i === 0 ? "#ffaa00" : i < 3 ? "#555" : "#2a2a2a", minWidth: 28, fontWeight: 900 }}>#{i + 1}</span>
+                    <span style={{ color: "#555", minWidth: 32, fontSize: 10 }}>{e.name || "---"}</span>
+                    <span style={{ color: "#666", flex: 1, fontSize: 10 }}>{e.archetype}</span>
+                    <span style={{ color: "#444", fontSize: 9 }}>[{e.grade}]</span>
+                    <span style={{ color: "#00ff88", minWidth: 80, textAlign: "right" }}>{fmt(e.netWorth)}</span>
+                    <span style={{ color: "#2a2a2a", minWidth: 40, fontSize: 9 }}>{e.diff}</span>
+                  </div>
+                ))
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 
@@ -1398,46 +1459,64 @@ export default function FINBOT9000() {
               </button>
             </div>
 
-            {/* Callsign + Leaderboard */}
-            <div style={{ maxWidth: 620, margin: "0 auto 40px" }}>
-              {!callsignSaved ? (
-                <div style={{ textAlign: "left", background: "#0d0d0d", border: "1px solid #00e5ff33", padding: 20 }}>
-                  <div style={{ fontSize: 10, color: "#00e5ff", letterSpacing: 3, marginBottom: 12 }}>// ENTER CALLSIGN TO LOG YOUR RUN</div>
-                  <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-                    <span style={{ color: "#00e5ff", fontSize: 16 }}>▶</span>
-                    <input
-                      maxLength={3}
-                      value={callsign}
-                      onChange={(e) => setCallsign(e.target.value.toUpperCase().replace(/[^A-Z]/g, ""))}
-                      placeholder="___"
-                      style={{ background: "none", border: "none", borderBottom: "1px solid #00e5ff", color: "#00e5ff", fontFamily: "monospace", fontSize: 22, width: 60, outline: "none", letterSpacing: 6, textAlign: "center" }}
-                    />
-                    <button onClick={() => saveCallsign(endData)} style={{ ...css.btn("#00e5ff"), padding: "6px 20px", fontSize: 11 }}>
-                      SUBMIT ▶
-                    </button>
-                    <button onClick={() => saveCallsign({ ...endData })} style={{ background: "none", border: "none", color: "#444", fontFamily: "monospace", fontSize: 10, cursor: "pointer" }}>
-                      skip
-                    </button>
-                  </div>
-                  <div style={{ fontSize: 10, color: "#333", marginTop: 8 }}>3 letters max · uppercase · persists across sessions</div>
+            {/* Callsign */}
+            {!callsignSaved && (
+              <div style={{ maxWidth: 620, margin: "0 auto 28px", textAlign: "left", background: "#0d0d0d", border: "1px solid #00e5ff33", padding: 20 }}>
+                <div style={{ fontSize: 10, color: "#00e5ff", letterSpacing: 3, marginBottom: 12 }}>// ENTER CALLSIGN TO LOG YOUR RUN</div>
+                <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+                  <span style={{ color: "#00e5ff", fontSize: 16 }}>▶</span>
+                  <input
+                    maxLength={3}
+                    value={callsign}
+                    onChange={(e) => setCallsign(e.target.value.toUpperCase().replace(/[^A-Z]/g, ""))}
+                    placeholder="___"
+                    style={{ background: "none", border: "none", borderBottom: "1px solid #00e5ff", color: "#00e5ff", fontFamily: "monospace", fontSize: 22, width: 60, outline: "none", letterSpacing: 6, textAlign: "center" }}
+                  />
+                  <button onClick={() => saveCallsign(endData)} style={{ ...css.btn("#00e5ff"), padding: "6px 20px", fontSize: 11 }}>SUBMIT ▶</button>
+                  <button onClick={() => saveCallsign({ ...endData })} style={{ background: "none", border: "none", color: "#444", fontFamily: "monospace", fontSize: 10, cursor: "pointer" }}>skip</button>
                 </div>
+                <div style={{ fontSize: 10, color: "#333", marginTop: 8 }}>3 letters · uppercase · persists across sessions</div>
+              </div>
+            )}
+
+            {/* Leaderboard: top-25 with filter tabs */}
+            <div style={{ maxWidth: 620, margin: "0 auto 40px", textAlign: "left" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+                <div style={{ fontSize: 10, color: "#333", letterSpacing: 3 }}>// LEADERBOARD</div>
+                {playerRank && (
+                  <div style={{ fontSize: 10, color: "#aa88ff", letterSpacing: 2 }}>YOUR RANK #{playerRank}</div>
+                )}
+              </div>
+              {/* Filter tabs */}
+              <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
+                {['ALL', 'DAILY', difficulty?.label].filter(Boolean).map(f => (
+                  <button key={f} onClick={() => setLbFilter(f)}
+                    style={{ background: lbFilter === f ? "#aa88ff22" : "none", border: `1px solid ${lbFilter === f ? "#aa88ff" : "#1a1a1a"}`, color: lbFilter === f ? "#aa88ff" : "#333", fontFamily: "monospace", fontSize: 9, letterSpacing: 2, padding: "3px 10px", cursor: "pointer" }}>
+                    {f}
+                  </button>
+                ))}
+              </div>
+              {leaderboard.length === 0 ? (
+                <div style={{ fontSize: 10, color: "#222", padding: "20px 0" }}>NO DATA — play with Supabase configured to see global rankings</div>
               ) : (
-                <>
-                  <div style={{ fontSize: 10, color: "#333", letterSpacing: 3, marginBottom: 12, textAlign: "left" }}>// LEADERBOARD</div>
-                  {leaderboard.slice(0, 8).map((e, i) => {
-                    const isYou = e.callsign === callsign.trim().toUpperCase().slice(0, 3);
-                    return (
-                      <div key={i} style={{ display: "flex", gap: 10, fontSize: 11, borderBottom: "1px solid #0f0f0f", padding: "5px 0", border: isYou ? "1px solid #00e5ff44" : "none", background: isYou ? "#00e5ff08" : "none", paddingLeft: isYou ? 6 : 0 }}>
-                        <span style={{ color: i === 0 ? "#ffaa00" : "#333", minWidth: 24 }}>#{i + 1}</span>
-                        <span style={{ color: "#00e5ff", minWidth: 36 }}>{e.callsign || "---"}</span>
-                        <span style={{ color: "#777", flex: 1 }}>{e.archetype}</span>
-                        <span style={{ color: "#555", fontSize: 10 }}>[{e.grade}]</span>
-                        <span style={{ color: "#00ff88" }}>{fmt(e.netWorth)}</span>
-                        <span style={{ color: "#333" }}>{e.diff}</span>
-                      </div>
-                    );
-                  })}
-                </>
+                leaderboard.slice(0, 25).map((e, i) => {
+                  const isYou = playerRank ? (i + 1) === playerRank : (e.uid && e.uid === get().anonUid);
+                  return (
+                    <div key={e.id || i} style={{
+                      display: "flex", gap: 10, fontSize: 11,
+                      padding: "6px 8px", marginBottom: 2,
+                      background: isYou ? "#aa88ff0d" : "none",
+                      border: isYou ? "1px solid #aa88ff44" : "1px solid transparent",
+                    }}>
+                      <span style={{ color: i === 0 ? "#ffaa00" : i < 3 ? "#555" : "#222", minWidth: 26, fontWeight: i < 3 ? 900 : 400 }}>#{i + 1}</span>
+                      <span style={{ color: isYou ? "#aa88ff" : "#444", minWidth: 32, fontSize: 10 }}>{e.name || "---"}</span>
+                      <span style={{ color: "#555", flex: 1, fontSize: 10 }}>{e.archetype}</span>
+                      <span style={{ color: "#444", fontSize: 9 }}>[{e.grade}]</span>
+                      <span style={{ color: isYou ? "#aa88ff" : "#00ff88", minWidth: 72, textAlign: "right" }}>{fmt(e.netWorth)}</span>
+                      <span style={{ color: "#1a1a1a", minWidth: 36, fontSize: 9 }}>{e.diff}</span>
+                    </div>
+                  );
+                })
               )}
             </div>
 
@@ -1446,6 +1525,22 @@ export default function FINBOT9000() {
             </button>
           </div>
         </div>
+
+        {/* Beat notification toast */}
+        <AnimatePresence>
+          {beatNotice && (
+            <motion.div
+              key="beat-toast"
+              initial={{ opacity: 0, y: 24 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 24 }}
+              style={{ position: "fixed", bottom: 28, left: "50%", transform: "translateX(-50%)", background: "#0d0d0d", border: "1px solid #ff444466", padding: "12px 20px", fontFamily: "monospace", fontSize: 11, color: "#ff4444", zIndex: 200, whiteSpace: "nowrap", cursor: "pointer" }}
+              onClick={clearBeatNotice}
+            >
+              ▲ {beatNotice.name} just beat your score with {fmt(beatNotice.score)} — {beatNotice.archetype}
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     );
   }

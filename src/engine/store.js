@@ -66,6 +66,12 @@ export const initialState = {
   streak:               0,
   personalBests:        {},
   dailyDone:            false,
+  // Leaderboard (I-03)
+  anonUid:          null,
+  lbFilter:         'ALL',
+  playerRank:       null,
+  beatNotice:       null,   // { name, score, archetype } — realtime beat toast
+  showLb:           false,
   // Multiplayer
   multiMode:            false,
   sessionCode:          "",

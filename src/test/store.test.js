@@ -46,6 +46,16 @@ describe('initialState', () => {
     expect(initialState.p2Outcome).toBeNull();
     expect(initialState.p2NetEffect).toBeNull();
     expect(initialState.replayData).toBeNull();
+    // I-03 leaderboard fields
+    expect(initialState.anonUid).toBeNull();
+    expect(initialState.playerRank).toBeNull();
+    expect(initialState.beatNotice).toBeNull();
+  });
+
+  it('has I-03 leaderboard default fields', () => {
+    expect(initialState.lbFilter).toBe('ALL');
+    expect(initialState.showLb).toBe(false);
+    expect(initialState.anonUid).toBeNull();
   });
 
   it('has correct default array fields', () => {

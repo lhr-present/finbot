@@ -13,7 +13,10 @@ import { callClaude, parseScenarioJSON, buildPrompt } from "../engine/scenarios.
 import { computeArchetype, resolveEnding } from "../engine/stateMachine.js";
 import { sfx, setSoundMuted } from "../engine/sounds.js";
 import { useGameStore, st, stf, get, initialState } from "../engine/store.js";
-import { isSupabaseEnabled, postScore, fetchGlobalTop10, fetchTop10ByDifficulty } from "../engine/supabase.js";
+import {
+  isSupabaseEnabled, postScore, fetchGlobalTop10, fetchTop10ByDifficulty,
+  ensureAnonSession, submitRun, fetchLeaderboard, subscribeRuns, computeScore,
+} from "../engine/supabase.js";
 import {
   checkNewAchievements, loadAchievements, saveAchievements,
   loadStreak, incrementStreak, loadPersonalBests, updatePersonalBest,
@@ -41,6 +44,7 @@ export function useGameEngine() {
     p2NetWorth, p2Choice, p2Quality, p2Outcome, p2NetEffect,
     lobbyCode, lobbyError, storageOk, spinFrame,
     achievements, newAchievements, streak, personalBests, dailyDone,
+    anonUid, lbFilter, playerRank, beatNotice, showLb,
   } = useGameStore(useShallow(s => s));
 
   // ─── REFS (must stay in React hook) ─────────────────────────────────────────
@@ -51,6 +55,7 @@ export function useGameEngine() {
   const rippleTimerRef        = useRef(null);
   const timerRef              = useRef(null);
   const pollRef               = useRef(null);
+  const realtimeChannelRef    = useRef(null);
 
   const market = MARKET_CONDITIONS[marketIdx];
 
@@ -103,13 +108,18 @@ export function useGameEngine() {
     return () => clearInterval(t);
   }, [screen]);
 
-  // ─── LOAD LEADERBOARD ───────────────────────────────────────────────────────
+  // ─── ON MOUNT: anon auth + leaderboard ─────────────────────────────────────
   useEffect(() => {
-    // Always seed from localStorage first for instant display
+    // Seed localStorage leaderboard instantly
     try { st({ leaderboard: JSON.parse(localStorage.getItem("finbot_lb") || "[]") }); } catch {}
-    // Then upgrade with global Supabase data if available
+
     if (isSupabaseEnabled()) {
-      fetchGlobalTop10().then(rows => { if (rows) st({ leaderboard: rows }); }).catch(() => {});
+      // Anon auth (fire-and-forget)
+      ensureAnonSession().then(uid => { if (uid) st({ anonUid: uid }); }).catch(() => {});
+      // Fetch global top-25
+      fetchLeaderboard('ALL', 25)
+        .then(rows => { if (rows) st({ leaderboard: rows }); })
+        .catch(() => {});
     }
   }, []);
 
@@ -555,12 +565,57 @@ export function useGameEngine() {
 
       const arc = computeArchetype(finalStats);
 
-      // Post to Supabase (fire-and-forget) + localStorage fallback
+      // ── Submit run + refresh leaderboard (fire-and-forget) ─────────────────
+      const runScore = computeScore(newWorth, s.difficulty.startNetWorth, finalStats.optimalRate);
+      const calibGrade = (() => {
+        const log = s.calibrationLog || [];
+        const hc  = log.filter(c => c.confidence >= 4);
+        if (hc.length === 0) return null;
+        const pct = hc.filter(c => c.wasGood).length / hc.length;
+        if (pct >= 0.9) return 'A';
+        if (pct >= 0.7) return 'B';
+        if (pct >= 0.5) return 'C';
+        return 'D';
+      })();
+
       if (isSupabaseEnabled()) {
-        postScore({ netWorth: newWorth, archetype: arc.title, grade: arc.grade, difficulty: s.difficulty.label, optimalRate: finalStats.optimalRate })
-          .then(() => fetchTop10ByDifficulty(s.difficulty.label))
-          .then(rows => { if (rows) st({ leaderboard: rows }); })
-          .catch(() => {});
+        const uid = s.anonUid || get().anonUid;
+        const biasDna = (() => {
+          const counts = {};
+          s.biasHistory.forEach(b => { counts[b.bias] = (counts[b.bias] || 0) + 1; });
+          return counts;
+        })();
+        submitRun({
+          uid,
+          playerName:       s.callsign?.trim().toUpperCase().slice(0, 3) || null,
+          score:            runScore,
+          netWorth:         newWorth,
+          startNetWorth:    s.difficulty.startNetWorth,
+          difficulty:       s.difficulty.label,
+          archetype:        arc.title,
+          grade:            arc.grade,
+          rounds:           totalR,
+          streak:           (s.streak || 0) + 1,
+          calibrationGrade: calibGrade,
+          biasDna,
+          optimalRate:      finalStats.optimalRate,
+        }).then(({ ok }) => {
+          if (!ok) return;
+          // Refresh the leaderboard for current difficulty
+          return fetchLeaderboard(s.difficulty.label, 25);
+        }).then(rows => {
+          if (!rows) return;
+          // Find player's rank
+          const myRank = rows.findIndex(r => r.uid === (s.anonUid || get().anonUid)) + 1;
+          st({ leaderboard: rows, playerRank: myRank || null });
+          // Start Realtime subscription so we hear if someone beats us
+          if (realtimeChannelRef.current) realtimeChannelRef.current.unsubscribe?.();
+          subscribeRuns(
+            s.anonUid || get().anonUid,
+            runScore,
+            notice => st({ beatNotice: notice })
+          ).then(ch => { realtimeChannelRef.current = ch; }).catch(() => {});
+        }).catch(() => {});
       }
       try {
         const lb = JSON.parse(localStorage.getItem("finbot_lb") || "[]");
@@ -738,6 +793,11 @@ export function useGameEngine() {
       deleteShared(SK.disconnect(s.sessionCode));
     }
     if (typeof speechSynthesis !== "undefined") speechSynthesis.cancel();
+    // Unsubscribe Realtime channel
+    if (realtimeChannelRef.current) {
+      realtimeChannelRef.current.unsubscribe?.();
+      realtimeChannelRef.current = null;
+    }
     st({
       ...initialState,
       apiKey:        s.apiKey,
@@ -746,6 +806,8 @@ export function useGameEngine() {
       streak:        s.streak,
       personalBests: s.personalBests,
       dailyDone:     isDailyDone(),
+      anonUid:       s.anonUid,
+      leaderboard:   s.leaderboard,
     });
   };
 
@@ -898,6 +960,17 @@ export function useGameEngine() {
     dailyDone,
     getDailySeed,
     getDailyKey,
+    // Leaderboard (I-03)
+    anonUid,
+    lbFilter,      setLbFilter: v => {
+      st({ lbFilter: v });
+      if (isSupabaseEnabled()) {
+        fetchLeaderboard(v, 25).then(rows => { if (rows) st({ leaderboard: rows }); }).catch(() => {});
+      }
+    },
+    playerRank,
+    beatNotice,    clearBeatNotice: () => st({ beatNotice: null }),
+    showLb,        setShowLb: v => st({ showLb: v }),
     // Re-exports for lobby inline handlers
     SK,
     storeShared,
