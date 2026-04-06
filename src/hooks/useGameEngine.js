@@ -14,7 +14,7 @@ import { computeArchetype, resolveEnding } from "../engine/stateMachine.js";
 import { sfx, setSoundMuted } from "../engine/sounds.js";
 import { useGameStore, st, stf, get, initialState } from "../engine/store.js";
 import {
-  isSupabaseEnabled, postScore, fetchGlobalTop10, fetchTop10ByDifficulty,
+  isSupabaseEnabled, postScore, fetchTop10ByDifficulty,
   ensureAnonSession, submitRun, fetchLeaderboard, subscribeRuns, computeScore,
 } from "../engine/supabase.js";
 import {

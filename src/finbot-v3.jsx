@@ -24,6 +24,7 @@ import {
 } from "./engine/constants.js";
 import { resolveEnding } from "./engine/stateMachine.js";
 import { ACHIEVEMENTS } from "./engine/reinforcement.js";
+import { isSupabaseEnabled } from "./engine/supabase.js";
 import confetti from "canvas-confetti";
 import BiasDNACard from "./components/BiasDNACard.jsx";
 
@@ -152,6 +153,7 @@ export default function FINBOT9000() {
     resetGame,
     createSession,
     joinSession,
+    anonUid,
     lbFilter, setLbFilter,
     playerRank,
     beatNotice, clearBeatNotice,
@@ -1500,7 +1502,7 @@ export default function FINBOT9000() {
                 <div style={{ fontSize: 10, color: "#222", padding: "20px 0" }}>NO DATA — play with Supabase configured to see global rankings</div>
               ) : (
                 leaderboard.slice(0, 25).map((e, i) => {
-                  const isYou = playerRank ? (i + 1) === playerRank : (e.uid && e.uid === get().anonUid);
+                  const isYou = playerRank ? (i + 1) === playerRank : (e.uid && e.uid === anonUid);
                   return (
                     <div key={e.id || i} style={{
                       display: "flex", gap: 10, fontSize: 11,
