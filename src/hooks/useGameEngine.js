@@ -59,8 +59,7 @@ export function useGameEngine() {
 
   const market = MARKET_CONDITIONS[marketIdx];
 
-  // ─── SYNC SOUND MUTE FLAG ────────────────────────────────────────────────────
-  useEffect(() => { setSoundMuted(!soundOn); }, [soundOn]);
+  // (sound mute sync moved to PERSIST SOUND PREFERENCE effect below)
 
   // ─── ON MOUNT: read URL seed param ─────────────────────────────────────────
   useEffect(() => {
@@ -71,15 +70,24 @@ export function useGameEngine() {
     } catch {}
   }, []);
 
-  // ─── ON MOUNT: load reinforcement loop data from localStorage ───────────────
+  // ─── ON MOUNT: load reinforcement loop data + sound preference ─────────────
   useEffect(() => {
+    const savedSound = localStorage.getItem('finbot_sound');
     st({
       achievements:  loadAchievements(),
       streak:        loadStreak(),
       personalBests: loadPersonalBests(),
       dailyDone:     isDailyDone(),
+      // Restore mute preference (default ON if never set)
+      soundOn: savedSound === null ? true : savedSound !== '0',
     });
   }, []);
+
+  // ─── PERSIST SOUND PREFERENCE ───────────────────────────────────────────────
+  useEffect(() => {
+    try { localStorage.setItem('finbot_sound', soundOn ? '1' : '0'); } catch {}
+    setSoundMuted(!soundOn);
+  }, [soundOn]);
 
   // ─── SPINNER ────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -141,6 +149,7 @@ export function useGameEngine() {
       const sess = await readShared(SK.session(sessionCode));
       if (sess && sess.p2ready) {
         clearInterval(pollRef.current);
+        sfx.join();
         st({ sessionPhase: "BOTH_READY" });
         setTimeout(() => st({ screen: "GAME" }), 3000);
       }
@@ -438,6 +447,11 @@ export function useGameEngine() {
     else if (['OPTIMAL', 'GOOD'].includes(c.quality)) sfx.good();
     else if (c.quality === 'NEUTRAL') sfx.neutral();
     else sfx.bad();
+    // Secondary directional layer — money going up vs down
+    if (!forcedByTimer) {
+      if (c.netEffect > 0) sfx.gain();
+      else if (c.netEffect < 0) sfx.loss();
+    }
     plausible('choice_made', { quality: c.quality, round: s.round, category: s.scenario.category });
 
     stf(prev => ({

@@ -48,8 +48,8 @@ describe('sfx API shape', () => {
     });
   });
 
-  it('has exactly 12 sound events', () => {
-    expect(Object.keys(sfx)).toHaveLength(12);
+  it('has 15 sound events (K-01: +gain, loss, join)', () => {
+    expect(Object.keys(sfx)).toHaveLength(15);
   });
 });
 
@@ -60,7 +60,7 @@ describe('sfx calls do not throw without AudioContext (Node env)', () => {
   [
     'tick', 'click', 'good', 'bad', 'neutral',
     'ripple', 'marketShift', 'timerWarn', 'timerExpired',
-    'win', 'lose', 'boot',
+    'win', 'lose', 'boot', 'gain', 'loss', 'join',
   ].forEach(name => {
     it(`sfx.${name}() does not throw`, () => {
       expect(() => sfx[name]()).not.toThrow();
@@ -77,6 +77,7 @@ describe('sfx is silent when muted', () => {
       sfx.ripple(); sfx.marketShift();
       sfx.timerWarn(); sfx.timerExpired();
       sfx.win(); sfx.lose();
+      sfx.gain(); sfx.loss(); sfx.join();
     }).not.toThrow();
     setSoundMuted(false);
   });

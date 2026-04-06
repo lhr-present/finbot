@@ -5,8 +5,13 @@
 let _ctx = null;
 let _muted = false;
 
+// Respect prefers-reduced-motion at module load — silences all sfx if set
+const _reducedMotion =
+  typeof window !== 'undefined' &&
+  window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
 function ctx() {
-  if (_muted) return null;
+  if (_muted || _reducedMotion) return null;
   if (!_ctx) {
     try { _ctx = new (window.AudioContext || window.webkitAudioContext)(); }
     catch { return null; }
@@ -139,5 +144,24 @@ export const sfx = {
     tone(220, 0.06, 'square', 0.10);
     tone(330, 0.06, 'square', 0.10, 0.10);
     tone(440, 0.08, 'square', 0.12, 0.20);
+  },
+
+  // Net worth increase — quiet ascending glide (supplements good/bad)
+  gain() {
+    tone(523, 0.07, 'sine', 0.07, 0.22);
+    tone(659, 0.07, 'sine', 0.07, 0.30);
+  },
+
+  // Net worth decrease — quiet descending blip
+  loss() {
+    tone(311, 0.08, 'sine', 0.07, 0.22);
+    tone(261, 0.10, 'sine', 0.06, 0.30);
+  },
+
+  // Multiplayer — P2 joined notification chime
+  join() {
+    tone(880, 0.08, 'sine', 0.13);
+    tone(1108, 0.08, 'sine', 0.15, 0.10);
+    tone(1319, 0.12, 'sine', 0.17, 0.20);
   },
 };
